@@ -1,0 +1,6 @@
+* { background-color: #1a1f1c; text-color: #d5ddd7; font: "JetBrainsMono Nerd Font 13"; }
+window { location: northeast; anchor: northeast; x-offset: -6px; y-offset: 36px; width: 170px; border: 2px; border-color: #7fa38a; border-radius: 8px; }
+mainbox { children: [ listview ]; }
+listview { lines: 3; hover-select: true; scrollbar: false; }
+element { padding: 6px 12px; }
+element selected.normal { background-color: #7fa38a; text-color: #1a1f1c; }
