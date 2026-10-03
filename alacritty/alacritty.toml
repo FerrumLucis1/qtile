@@ -1,0 +1,71 @@
+[general]
+live_config_reload = true
+working_directory = "None"
+
+# Active theme — managed by theme-apply.sh, do not edit manually.
+# Change the theme in ~/.config/dwm-titus/themes.toml instead.
+import = [
+  "~/.config/alacritty/active-theme.toml",
+  "~/.config/alacritty/keybinds.toml"
+]
+
+[window]
+title = "Alacritty"
+decorations = "none"
+blur = true
+opacity = 0.9
+padding.x = 10
+padding.y = 10
+
+[window.dimensions]
+columns = 100
+lines = 30
+
+[cursor.style]
+shape= "Beam"
+blinking = "Never"
+
+[colors]
+#transparent_background_colors = true
+draw_bold_text_with_bright_colors = true
+
+[env]
+TERM = "xterm-256color"
+
+[font]
+#glyph_offset = { x = 1, y = 0 }
+normal.family = "MesloLGS Nerd Font Mono"
+normal.style = "Regular"
+size = 11.0
+
+[font.bold]
+family = "MesloLGS Nerd Font Mono"
+style = "Bold"
+
+[font.italic]
+family = "MesloLGS Nerd Font Mono"
+style = "Italic"
+
+[colors.primary]
+background = "#1a1f1c"
+foreground = "#d5ddd7"
+
+[colors.normal]
+black   = "#232a26"
+red     = "#c47a74"
+green   = "#7fa38a"
+yellow  = "#c9b26d"
+blue    = "#7a9fb0"
+magenta = "#a58aa8"
+cyan    = "#7fb3a8"
+white   = "#d5ddd7"
+
+[colors.bright]
+black   = "#6f7d74"
+red     = "#d68f89"
+green   = "#a3c4a8"
+yellow  = "#dcc784"
+blue    = "#93b5c4"
+magenta = "#bba2be"
+cyan    = "#98c9bf"
+white   = "#eef3ef"

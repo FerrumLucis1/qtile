@@ -1,0 +1,12 @@
+background-color=#232a26
+text-color=#d5ddd7
+border-color=#7fa38a
+border-size=2
+border-radius=8
+default-timeout=8000
+[urgency=critical]
+background-color=#3a1f1f
+text-color=#ddd5d5
+border-color=#d6403a
+border-size=3
+default-timeout=0
