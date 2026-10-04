@@ -240,6 +240,7 @@ wmname = "LG3D"
 
 # --- Wayland additions ---
 import subprocess
+from libqtile.widget import base
 from libqtile import hook
 from libqtile.backend.wayland import InputConfig
 from libqtile.config import Key
@@ -252,16 +253,78 @@ wl_input_rules = {
 
 keys.append(Key([mod], "d", lazy.spawn("fuzzel"), desc="Launcher"))
 
-def wifi_icon():
-    # connected if any wireless interface is up (reads sysfs, no programs started)
+BLUE = "#4aa3ff"
+
+
+def wifi_state():
+    """Return (radio_on, connected, level 0-3) from sysfs/procfs - no programs started."""
     import glob
-    for d in glob.glob("/sys/class/net/*/wireless"):
+    radio_on = True
+    for t in glob.glob("/sys/class/rfkill/*/type"):
         try:
-            if open(d.replace("wireless", "operstate")).read().strip() == "up":
-                return "\uf1eb"
+            if open(t).read().strip() == "wlan":
+                d = t[:-4]
+                if open(d + "soft").read().strip() == "1" or open(d + "hard").read().strip() == "1":
+                    radio_on = False
         except OSError:
             pass
-    return "\U000f05aa"
+    try:
+        lines = open("/proc/net/wireless").read().splitlines()[2:]
+    except OSError:
+        lines = []
+    for line in lines:
+        parts = line.split()
+        if len(parts) > 2:
+            quality = float(parts[2].rstrip(".")) / 70  # link quality is out of 70
+            level = 3 if quality >= 0.75 else 2 if quality >= 0.5 else 1 if quality >= 0.25 else 0
+            return radio_on, True, level
+    return radio_on, False, 0
+
+
+class WifiArcs(base._Widget):
+    """Wi-Fi symbol drawn as a dot plus 3 arcs. Arcs light up blue with signal
+    strength, the rest stay white; everything goes grey when Wi-Fi is off."""
+
+    defaults = [("update_interval", 3, "Seconds between checks")]
+
+    def __init__(self, **config):
+        base._Widget.__init__(self, bar.CALCULATED, **config)
+        self.add_defaults(WifiArcs.defaults)
+        self.state = None
+
+    def calculate_length(self):
+        return 30
+
+    def timer_setup(self):
+        self.poll()
+
+    def poll(self):
+        new = wifi_state()
+        if new != self.state:
+            self.state = new
+            self.draw()
+        self.timeout_add(self.update_interval, self.poll)
+
+    def draw(self):
+        import math
+        if not self.state:
+            return
+        radio_on, connected, level = self.state
+        self.drawer.clear(self.background or self.bar.background)
+        ctx = self.drawer.ctx
+        cx, cy = self.length / 2, self.bar.height / 2 + 6
+        ctx.set_line_width(2)
+        for i, r in enumerate((5, 9, 13), start=1):
+            colour = dim if not radio_on else BLUE if connected and i <= level else fg
+            self.drawer.set_source_rgb(colour)
+            ctx.new_path()
+            ctx.arc(cx, cy, r, -3 * math.pi / 4, -math.pi / 4)
+            ctx.stroke()
+        self.drawer.set_source_rgb(dim if not radio_on else BLUE if connected else fg)
+        ctx.new_path()
+        ctx.arc(cx, cy, 1.8, 0, 2 * math.pi)
+        ctx.fill()
+        self.drawer.draw(offsetx=self.offsetx, offsety=self.offsety, width=self.length)
 
 
 def bt_icon():
@@ -269,7 +332,8 @@ def bt_icon():
         out = subprocess.run(["bluetoothctl", "show"], capture_output=True, text=True, timeout=2).stdout
     except Exception:
         out = ""
-    return "\uf293" if "Powered: yes" in out else "\U000f00b2"
+    colour = BLUE if "Powered: yes" in out else fg
+    return f'<span foreground="{colour}">\uf293</span>'
 
 
 def menu(name):
@@ -330,14 +394,14 @@ screens = [
                 widget.Clock(format="%a %b %d  %H:%M"),
                 widget.Spacer(),
                 widget.StatusNotifier(icon_size=16, padding=4),  # tray icons (Wayland-compatible)
-                widget.GenPollText(func=bt_icon, update_interval=10, padding=6, mouse_callbacks={"Button1": menu("btmenu")}),
-                widget.GenPollText(func=wifi_icon, update_interval=5, padding=6, mouse_callbacks={"Button1": menu("wifimenu")}),
                 widget.DF(visible_on_warn=False, format="/ {r:.0f}%"),
                 widget.Volume(fmt="vol {}"),
                 widget.Memory(format="mem {MemPercent:.0f}%"),
                 widget.CPU(format="cpu {load_percent:.0f}%"),
                 widget.Sep(linewidth=2, padding=10, size_percent=60, foreground=accent),
                 widget.Battery(update_interval=1, format="bat {char}{percent:2.0%}", charge_char="\uf0e7 ", discharge_char="", full_char="\uf00c ", empty_char="", unknown_char="", low_percentage=0.2, low_foreground="#c47a74"),
+                widget.GenPollText(func=bt_icon, update_interval=10, padding=8, mouse_callbacks={"Button1": menu("btmenu")}),
+                WifiArcs(mouse_callbacks={"Button1": menu("wifimenu")}),
                 widget.TextBox("⏻", mouse_callbacks={"Button1": lazy.spawn(os.path.expanduser("~/qtile/powermenu.sh"))}),
             ],
             24,
