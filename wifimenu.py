@@ -6,6 +6,7 @@ import re
 import shlex
 import subprocess
 import sys
+from functools import partial
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from popup import Popup, notify, relaunch_cmd, run_bg  # noqa: E402
@@ -13,19 +14,19 @@ from popup import Popup, notify, relaunch_cmd, run_bg  # noqa: E402
 CHECK, LOCK = "", ""
 
 
-def nm(*args):
+def nm(*args: str) -> str:
     return subprocess.run(["nmcli", *args], capture_output=True, text=True).stdout
 
 
-def fields(line):
+def fields(line: str) -> list[str]:
     return [f.replace("\\:", ":") for f in re.split(r"(?<!\\):", line)]
 
 
-def wifi_enabled():
+def wifi_enabled() -> bool:
     return nm("radio", "wifi").strip() == "enabled"
 
 
-def saved_networks():
+def saved_networks() -> set[str]:
     names = set()
     for line in nm("-t", "-f", "NAME,TYPE", "connection", "show").splitlines():
         f = fields(line)
@@ -34,8 +35,8 @@ def saved_networks():
     return names
 
 
-def networks():
-    seen = {}
+def networks() -> list[tuple[str, tuple[bool, int, str]]]:
+    seen: dict[str, tuple[bool, int, str]] = {}
     for line in nm("-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "dev", "wifi", "list").splitlines():
         f = (fields(line) + ["", "", "", ""])[:4]
         inuse, ssid, sig, sec = f[0] == "*", f[1], int(f[2] or 0), f[3]
@@ -46,7 +47,7 @@ def networks():
     return sorted(seen.items(), key=lambda kv: (not kv[1][0], -kv[1][1]))[:12]
 
 
-def connect_cmd(ssid, password=None):
+def connect_cmd(ssid: str, password: str | None = None) -> str:
     cmd = ["nmcli", "dev", "wifi", "connect", ssid]
     if password:
         cmd += ["password", password]
@@ -55,7 +56,7 @@ def connect_cmd(ssid, password=None):
 
 
 class WifiMenu(Popup):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("wifimenu", 260)
         on = wifi_enabled()
         self.add_switch("Wi-Fi", on, self.toggle)
@@ -69,18 +70,18 @@ class WifiMenu(Popup):
         for ssid, (active, sig, sec) in nets:
             secure = sec not in ("", "--")
             text = f"{CHECK if active else ' '} {ssid}{' ' + LOCK if secure else ''}  {sig}%"
-            self.add_item(text, lambda s=ssid, a=active, sec=secure: self.pick(s, a, sec, saved))
+            self.add_item(text, partial(self.pick, ssid, active, secure, saved))
         self.add_sep()
         self.add_item("Rescan", self.rescan, dim=True)
 
-    def toggle(self, state):
+    def toggle(self, state: bool) -> None:
         if state:
             run_bg(f"nmcli radio wifi on; sleep 4; {relaunch_cmd()}")
         else:
             run_bg("nmcli radio wifi off")
         self.destroy()
 
-    def pick(self, ssid, active, secure, saved):
+    def pick(self, ssid: str, active: bool, secure: bool, saved: set[str]) -> None:
         if active:
             run_bg(f"{shlex.join(['nmcli', 'connection', 'down', 'id', ssid])}"
                    f" && {notify('Wi-Fi', f'Disconnected from {ssid}')}")
@@ -90,19 +91,19 @@ class WifiMenu(Popup):
             run_bg(relaunch_cmd("--password", ssid))
         self.destroy()
 
-    def rescan(self):
+    def rescan(self) -> None:
         run_bg(f"nmcli dev wifi list --rescan yes >/dev/null; {relaunch_cmd()}")
         self.destroy()
 
 
 class PasswordBox(Popup):
-    def __init__(self, ssid):
+    def __init__(self, ssid: str) -> None:
         super().__init__("wifimenu", 260)
         self.ssid = ssid
         self.add_label(f"Password for {ssid}", dim=False)
         self.add_entry("password", self.submit)
 
-    def submit(self, pw):
+    def submit(self, pw: str) -> None:
         run_bg(connect_cmd(self.ssid, pw))
         self.destroy()
 

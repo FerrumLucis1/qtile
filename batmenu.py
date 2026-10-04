@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+from functools import partial
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from popup import Popup  # noqa: E402
@@ -13,7 +14,7 @@ from popup import Popup  # noqa: E402
 BAT = "/sys/class/power_supply/BAT0/"
 
 
-def read(path):
+def read(path: str) -> str:
     try:
         with open(path) as f:
             return f.read().strip()
@@ -21,14 +22,14 @@ def read(path):
         return ""
 
 
-def num(path):
+def num(path: str) -> int:
     try:
         return int(read(path))
     except ValueError:
         return 0
 
 
-def time_left(status):
+def time_left(status: str) -> str:
     """'2h 10m left' / '45m to full' from charge or energy counters, or ''."""
     for now, full, rate in (("charge_now", "charge_full", "current_now"),
                             ("energy_now", "energy_full", "power_now")):
@@ -44,7 +45,7 @@ def time_left(status):
     return ""
 
 
-def laptop_brightness():
+def laptop_brightness() -> int | None:
     try:
         out = subprocess.run(["brightnessctl", "-m"], capture_output=True, text=True, timeout=2).stdout
         return int(out.strip().split(",")[3].rstrip("%"))
@@ -52,18 +53,20 @@ def laptop_brightness():
         return None
 
 
-def external_connected():
+def external_connected() -> bool:
     return any(read(p) == "connected" for p in glob.glob("/sys/class/drm/card*-*/status")
                if "eDP" not in p and "LVDS" not in p)
 
 
-def ddc_displays():
+def ddc_displays() -> list[tuple[str, str, int]]:
     """[(display_number, name, brightness)] for monitors that answer DDC/CI."""
     try:
         out = subprocess.run(["ddcutil", "detect", "--brief"], capture_output=True, text=True, timeout=8).stdout
     except Exception:
         return []
-    found, num_, name = [], None, None
+    found: list[tuple[str, str]] = []
+    num_: str | None = None
+    name: str | None = None
     for line in out.splitlines() + ["Display end"]:
         line = line.strip()
         if line.startswith("Display "):
@@ -74,7 +77,7 @@ def ddc_displays():
         elif line.startswith("Monitor:") and num_:
             parts = line.split(":", 1)[1].split(":")
             name = parts[1].strip() if len(parts) > 1 and parts[1].strip() else parts[0].strip()
-    result = []
+    result: list[tuple[str, str, int]] = []
     for n, nm in found:
         try:
             v = subprocess.run(["ddcutil", "--display", n, "getvcp", "10", "--brief"],
@@ -87,7 +90,7 @@ def ddc_displays():
 
 
 class BatMenu(Popup):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("batmenu", 280)
         pct, status = num(BAT + "capacity"), read(BAT + "status") or "Unknown"
         self.add_label(f"Battery {pct}%  ·  {status}", dim=False)
@@ -110,12 +113,12 @@ class BatMenu(Popup):
                     self.add_label("Monitor doesn't support brightness control")
                 for n, name, val in displays:
                     self.add_label(name, dim=False)
-                    self.add_slider(val, lambda v, d=n: self.set_ddc(d, v), delay=400)
+                    self.add_slider(val, partial(self.set_ddc, n), delay=400)
 
-    def set_laptop(self, v):
+    def set_laptop(self, v: int) -> None:
         subprocess.Popen(["brightnessctl", "-q", "set", f"{v}%"])
 
-    def set_ddc(self, display, v):
+    def set_ddc(self, display: str, v: int) -> None:
         subprocess.Popen(["ddcutil", "--display", display, "setvcp", "10", str(v)],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 

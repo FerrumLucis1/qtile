@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+from functools import partial
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from popup import Popup  # noqa: E402
@@ -13,14 +14,14 @@ CHECK = ""
 SINK = "@DEFAULT_AUDIO_SINK@"
 
 
-def wpctl(*args):
+def wpctl(*args: str) -> str:
     try:
         return subprocess.run(["wpctl", *args], capture_output=True, text=True, timeout=2).stdout
     except Exception:
         return ""
 
 
-def volume():
+def volume() -> tuple[int, bool]:
     out = wpctl("get-volume", SINK)
     try:
         return round(float(out.split()[1]) * 100), "MUTED" in out
@@ -28,10 +29,12 @@ def volume():
         return 0, False
 
 
-def outputs(status=None):
+def outputs(status: str | None = None) -> list[tuple[str, str, bool]]:
     """[(id, name, is_default)] for the Audio > Sinks section of `wpctl status`."""
     status = status if status is not None else wpctl("status")
-    sinks, section, in_audio = [], None, False
+    sinks: list[tuple[str, str, bool]] = []
+    section: str | None = None
+    in_audio = False
     for raw in status.splitlines():
         line = re.sub(r"[│├└─]", " ", raw).rstrip()
         if not line.strip():
@@ -51,13 +54,13 @@ def outputs(status=None):
     return sinks
 
 
-def refresh_bar():
+def refresh_bar() -> None:
     subprocess.Popen(["qtile", "cmd-obj", "-o", "widget", "volicon", "-f", "refresh"],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 class VolMenu(Popup):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("volmenu", 280)
         vol, muted = volume()
         self.add_label("Volume", dim=False)
@@ -69,17 +72,17 @@ class VolMenu(Popup):
         if not sinks:
             self.add_label("No outputs found")
         for sid, name, default in sinks:
-            self.add_item(f"{CHECK if default else ' '} {name}", lambda i=sid: self.pick(i))
+            self.add_item(f"{CHECK if default else ' '} {name}", partial(self.pick, sid))
 
-    def set_volume(self, pct):
+    def set_volume(self, pct: int) -> None:
         wpctl("set-volume", SINK, f"{pct}%")
         refresh_bar()
 
-    def set_mute(self, on):
+    def set_mute(self, on: bool) -> None:
         wpctl("set-mute", SINK, "1" if on else "0")
         refresh_bar()
 
-    def pick(self, sid):
+    def pick(self, sid: str) -> None:
         wpctl("set-default", sid)
         refresh_bar()
         self.destroy()

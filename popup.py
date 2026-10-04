@@ -4,6 +4,8 @@ import os
 import shlex
 import subprocess
 import sys
+from collections.abc import Callable
+from typing import Any
 
 import gi
 
@@ -31,22 +33,22 @@ scale value { color: #d5ddd7; }
 """
 
 
-def notify(title, body=""):
+def notify(title: str, body: str = "") -> str:
     return shlex.join(["notify-send", "-a", "network", title, body])
 
 
-def run_bg(cmd):
+def run_bg(cmd: str) -> None:
     """Run a shell command in the background, detached from the menu."""
     subprocess.Popen(["sh", "-c", cmd], start_new_session=True)
 
 
-def relaunch_cmd(*args):
+def relaunch_cmd(*args: str) -> str:
     """Shell snippet that reopens the current menu script."""
     return shlex.join([sys.executable, os.path.abspath(sys.argv[0]), *args])
 
 
 class Popup(Gtk.Window):
-    def __init__(self, name, width=240):
+    def __init__(self, name: str, width: int = 240) -> None:
         GLib.set_prgname(name)  # becomes the Wayland app_id that Qtile matches on
         super().__init__(title=name)
         self.set_decorated(False)
@@ -66,7 +68,7 @@ class Popup(Gtk.Window):
         GLib.timeout_add(500, self._arm)
 
     # --- building blocks ---
-    def add_switch(self, text, state, on_toggle):
+    def add_switch(self, text: str, state: bool, on_toggle: Callable[[bool], None]) -> None:
         row = Gtk.Box(spacing=12)
         row.get_style_context().add_class("header")
         lbl = Gtk.Label(label=text, xalign=0)
@@ -76,10 +78,10 @@ class Popup(Gtk.Window):
         row.pack_end(sw, False, False, 0)
         self.box.pack_start(row, False, False, 0)
 
-    def add_sep(self):
+    def add_sep(self) -> None:
         self.box.pack_start(Gtk.Separator(), False, False, 0)
 
-    def add_label(self, text, dim=True):
+    def add_label(self, text: str, dim: bool = True) -> None:
         lbl = Gtk.Label(label=text, xalign=0)
         lbl.set_margin_start(14)
         lbl.set_margin_top(6)
@@ -88,7 +90,7 @@ class Popup(Gtk.Window):
             lbl.get_style_context().add_class("dim")
         self.box.pack_start(lbl, False, False, 0)
 
-    def add_item(self, text, callback, dim=False):
+    def add_item(self, text: str, callback: Callable[[], None], dim: bool = False) -> None:
         b = Gtk.Button()
         b.set_relief(Gtk.ReliefStyle.NONE)
         lbl = Gtk.Label(label=text, xalign=0)
@@ -100,7 +102,8 @@ class Popup(Gtk.Window):
         b.connect("clicked", lambda *_: callback())
         self.box.pack_start(b, False, False, 0)
 
-    def add_slider(self, value, on_change, lo=0, hi=100, delay=120):
+    def add_slider(self, value: int, on_change: Callable[[int], None], lo: int = 0, hi: int = 100,
+                   delay: int = 120) -> Any:
         """Horizontal slider; on_change(int) fires once dragging pauses for `delay` ms."""
         scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, lo, hi, 1)
         scale.set_value(value)
@@ -108,14 +111,14 @@ class Popup(Gtk.Window):
         scale.set_value_pos(Gtk.PositionType.RIGHT)
         scale.set_margin_start(14)
         scale.set_margin_end(14)
-        pending = {"id": None}
+        pending: dict[str, int | None] = {"id": None}
 
-        def fire():
+        def fire() -> bool:
             pending["id"] = None
             on_change(int(scale.get_value()))
             return False
 
-        def changed(_s):
+        def changed(_s: Any) -> None:
             if pending["id"]:
                 GLib.source_remove(pending["id"])
             pending["id"] = GLib.timeout_add(delay, fire)
@@ -124,25 +127,25 @@ class Popup(Gtk.Window):
         self.box.pack_start(scale, False, False, 0)
         return scale
 
-    def add_entry(self, placeholder, on_submit, secret=True):
+    def add_entry(self, placeholder: str, on_submit: Callable[[str], None], secret: bool = True) -> None:
         e = Gtk.Entry(placeholder_text=placeholder, visibility=not secret)
         e.connect("activate", lambda w: on_submit(w.get_text()))
         self.box.pack_start(e, False, False, 0)
         GLib.idle_add(e.grab_focus)
 
     # --- behaviour ---
-    def _arm(self):
+    def _arm(self) -> bool:
         self._armed = True
         return False
 
-    def _on_active(self, *_):
+    def _on_active(self, *_: Any) -> None:
         if self._armed and not self.is_active():
             self.destroy()
 
-    def _on_key(self, _w, ev):
+    def _on_key(self, _w: Any, ev: Any) -> None:
         if ev.keyval == 65307:  # Escape
             self.destroy()
 
-    def run(self):
+    def run(self) -> None:
         self.show_all()
         Gtk.main()

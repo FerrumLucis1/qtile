@@ -3,6 +3,7 @@
 Add an item by adding one line to ITEMS. Closes on Esc, on click-away, or after picking."""
 import subprocess
 import sys
+from typing import Any
 
 import gi
 
@@ -26,7 +27,7 @@ GLib.set_prgname("powermenu")  # becomes the window's app_id, which Qtile matche
 
 
 class Menu(Gtk.Window):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(title="powermenu")
         self.set_decorated(False)
         self.set_resizable(False)
@@ -49,19 +50,19 @@ class Menu(Gtk.Window):
         self.armed = False
         GLib.timeout_add(500, self.arm)  # ignore focus changes while the window is opening
 
-    def arm(self):
+    def arm(self) -> bool:
         self.armed = True
         return False
 
-    def on_active(self, *_):
+    def on_active(self, *_: Any) -> None:
         if self.armed and not self.is_active():
             self.destroy()
 
-    def on_key(self, _w, ev):
+    def on_key(self, _w: Any, ev: Any) -> None:
         if ev.keyval == 65307:  # Escape
             self.destroy()
 
-    def run(self, _b, cmd):
+    def run(self, _b: Any, cmd: list[str]) -> None:
         subprocess.Popen(cmd)
         self.destroy()
 

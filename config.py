@@ -4,6 +4,7 @@ import glob
 import math
 import os
 import subprocess
+from typing import Any, cast
 
 from libqtile import bar, hook, layout, qtile, widget
 from libqtile.backend.wayland import InputConfig
@@ -82,7 +83,7 @@ layouts = [
     layout.Columns(margin=8, border_width=2, border_focus=accent, border_normal=bg),
     layout.Max(),
 ]
-POPUPS = {"powermenu", "wifimenu", "btmenu", "volmenu", "batmenu"}  # GTK menus opened from the bar
+POPUPS: set[str] = {"powermenu", "wifimenu", "btmenu", "volmenu", "batmenu"}  # GTK menus opened from the bar
 floating_layout = layout.Floating(float_rules=[
     *layout.Floating.default_float_rules,
     *[Match(wm_class=c) for c in ("confirmreset", "makebranch", "maketag", "ssh-askpass", *POPUPS)],
@@ -99,7 +100,7 @@ wl_input_rules = {
 
 
 # ---------------------------------------------------------------- bar helpers
-def read(path):
+def read(path: str) -> str:
     try:
         with open(path) as f:
             return f.read().strip()
@@ -107,7 +108,7 @@ def read(path):
         return ""
 
 
-def radio_on(kind):
+def radio_on(kind: str) -> bool:
     """True if the rfkill radio of this type ('wlan'/'bluetooth') exists and isn't blocked."""
     for t in glob.glob("/sys/class/rfkill/*/type"):
         if read(t) == kind:
@@ -116,7 +117,7 @@ def radio_on(kind):
     return False
 
 
-def wifi_level(iface):
+def wifi_level(iface: str) -> int:
     """Signal bars 0-3 from `iw` (dBm); falls back to nmcli if iw is missing."""
     try:
         out = subprocess.run(["iw", "dev", iface, "link"], capture_output=True, text=True, timeout=1).stdout
@@ -141,7 +142,7 @@ def wifi_level(iface):
     return 0
 
 
-def wifi_state():
+def wifi_state() -> tuple[bool, bool, int]:
     """(radio_on, connected, level 0-3)"""
     on = radio_on("wlan")
     for d in glob.glob("/sys/class/net/*/wireless"):
@@ -157,25 +158,25 @@ class WifiArcs(base._Widget):
 
     defaults = [("update_interval", 3, "Seconds between checks")]
 
-    def __init__(self, **config):
+    def __init__(self, **config: Any) -> None:
         base._Widget.__init__(self, bar.CALCULATED, **config)
         self.add_defaults(WifiArcs.defaults)
-        self.state = None
+        self.state: tuple[bool, bool, int] | None = None
 
-    def calculate_length(self):
+    def calculate_length(self) -> int:
         return 30
 
-    def timer_setup(self):
+    def timer_setup(self) -> None:
         self.poll()
 
-    def poll(self):
+    def poll(self) -> None:
         new = wifi_state()
         if new != self.state:
             self.state = new
             self.draw()
         self.timeout_add(self.update_interval, self.poll)
 
-    def draw(self):
+    def draw(self) -> None:
         if not self.state:
             return
         on, connected, level = self.state
@@ -195,7 +196,7 @@ class WifiArcs(base._Widget):
         self.drawer.draw(offsetx=self.offsetx, offsety=self.offsety, width=self.length)
 
 
-def text_layout(w, text=""):
+def text_layout(w: Any, text: str = "") -> Any:
     return w.drawer.textlayout(text, fg, w.font, w.fontsize, None, wrap=False)
 
 
@@ -210,19 +211,21 @@ class VolumeIcon(base._Widget):
         ("fontsize", 13, ""),
     ]
 
-    def __init__(self, **config):
+    def __init__(self, **config: Any) -> None:
         base._Widget.__init__(self, bar.CALCULATED, **config)
         self.add_defaults(VolumeIcon.defaults)
-        self.vol, self.muted, self.showing = 0, False, None
+        self.vol: int = 0
+        self.muted: bool = False
+        self.showing: Any = None
 
-    def _configure(self, qtile, bar_):
+    def _configure(self, qtile: Any, bar_: Any) -> None:
         base._Widget._configure(self, qtile, bar_)
-        self.layout = text_layout(self)
+        self.tl: Any = text_layout(self)
 
-    def calculate_length(self):
+    def calculate_length(self) -> int:
         return 40
 
-    def read(self):
+    def read(self) -> None:
         try:
             out = subprocess.run(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"],
                                  capture_output=True, text=True, timeout=1).stdout
@@ -231,51 +234,51 @@ class VolumeIcon(base._Widget):
         except Exception:
             pass
 
-    def timer_setup(self):
+    def timer_setup(self) -> None:
         self.poll()
 
-    def poll(self):
+    def poll(self) -> None:
         before = (self.vol, self.muted)
         self.read()
         if (self.vol, self.muted) != before:
             self.draw()
         self.timeout_add(self.update_interval, self.poll)
 
-    def flash(self):
+    def flash(self) -> None:
         """Show the percentage for a moment, then go back to the icon."""
         if self.showing:
             self.showing.cancel()
         self.showing = self.timeout_add(self.show_for, self.end_flash)
         self.draw()
 
-    def end_flash(self):
+    def end_flash(self) -> None:
         self.showing = None
         self.draw()
 
     @expose_command()
-    def change(self, step="5%+"):
+    def change(self, step: str = "5%+") -> None:
         subprocess.run(["wpctl", "set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", step], timeout=1)
         self.read()
         self.flash()
 
     @expose_command()
-    def toggle_mute(self):
+    def toggle_mute(self) -> None:
         subprocess.run(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"], timeout=1)
         self.read()
         self.flash()
 
     @expose_command()
-    def refresh(self):
+    def refresh(self) -> None:
         self.read()
         self.draw()
 
-    def draw(self):
+    def draw(self) -> None:
         self.drawer.clear(self.background or self.bar.background)
         if self.showing:
-            self.layout.text = "mute" if self.muted else f"{self.vol}%"
-            self.layout.colour = dim if self.muted else fg
-            self.layout.draw((self.length - self.layout.width) / 2,
-                             (self.bar.height - self.layout.height) / 2)
+            self.tl.text = "mute" if self.muted else f"{self.vol}%"
+            self.tl.colour = dim if self.muted else fg
+            self.tl.draw((self.length - self.tl.width) / 2,
+                             (self.bar.height - self.tl.height) / 2)
         else:
             ctx = self.drawer.ctx
             x, cy = self.length / 2 - 9, self.bar.height / 2
@@ -306,7 +309,7 @@ class VolumeIcon(base._Widget):
         self.drawer.draw(offsetx=self.offsetx, offsety=self.offsety, width=self.length)
 
 
-def battery_info():
+def battery_info() -> tuple[int, str]:
     """(percent, status) from sysfs."""
     b = "/sys/class/power_supply/BAT0/"
     try:
@@ -326,30 +329,30 @@ class BatteryIcon(base._Widget):
         ("fontsize", 13, ""),
     ]
 
-    def __init__(self, **config):
+    def __init__(self, **config: Any) -> None:
         base._Widget.__init__(self, bar.CALCULATED, **config)
         self.add_defaults(BatteryIcon.defaults)
-        self.state = None
+        self.state: tuple[int, str] | None = None
 
-    def _configure(self, qtile, bar_):
+    def _configure(self, qtile: Any, bar_: Any) -> None:
         base._Widget._configure(self, qtile, bar_)
-        self.layout = text_layout(self, "\uf0e7100%")
-        self.text_w = self.layout.width  # widest possible text, so the bar doesn't jump
+        self.tl: Any = text_layout(self, "\uf0e7100%")
+        self.text_w: int = self.tl.width  # widest possible text, so the bar doesn't jump
 
-    def calculate_length(self):
+    def calculate_length(self) -> int:
         return 26 + self.text_w
 
-    def timer_setup(self):
+    def timer_setup(self) -> None:
         self.poll()
 
-    def poll(self):
+    def poll(self) -> None:
         new = battery_info()
         if new != self.state:
             self.state = new
             self.draw()
         self.timeout_add(self.update_interval, self.poll)
 
-    def draw(self):
+    def draw(self) -> None:
         if not self.state:
             return
         pct, status = self.state
@@ -367,21 +370,21 @@ class BatteryIcon(base._Widget):
         ctx.fill()
         ctx.rectangle(x + 2, y + 2, (w - 4) * max(pct, 3) / 100, h - 4)  # charge level
         ctx.fill()
-        self.layout.text = ("\uf0e7" if charging else "") + f"{pct}%"
-        self.layout.colour = colour
-        self.layout.draw(26, (self.bar.height - self.layout.height) / 2)
+        self.tl.text = ("\uf0e7" if charging else "") + f"{pct}%"
+        self.tl.colour = colour
+        self.tl.draw(26, (self.bar.height - self.tl.height) / 2)
         self.drawer.draw(offsetx=self.offsetx, offsety=self.offsety, width=self.length)
 
 
-def bt_icon():
+def bt_icon() -> str:
     return f'<span foreground="{BLUE if radio_on("bluetooth") else fg}"></span>'
 
 
-def menu(name):
+def menu(name: str) -> Any:
     return lazy.spawn([f"{HOME_REPO}/menu.sh", name])
 
 
-def sep():
+def sep() -> widget.Sep:
     return widget.Sep(linewidth=1, padding=8, size_percent=50, foreground=dim)
 
 
@@ -434,16 +437,16 @@ screens = [
 
 # ---------------------------------------------------------------- hooks
 @hook.subscribe.client_managed
-def place_popup(c):
+def place_popup(c: Any) -> None:
     """Put the bar's pop-up menus just under the bar, top-right corner."""
     if POPUPS & set(c.get_wm_class() or []):
-        scr = qtile.current_screen
+        scr = cast(Any, qtile).current_screen
         w, h = (c.width or 240), (c.height or 120)
         c.place(scr.x + scr.width - w - 6, scr.y + 36, w, h, 0, accent, above=True)
 
 
 @hook.subscribe.startup_once
-def autostart():
+def autostart() -> None:
     subprocess.Popen(["lxpolkit"])
     subprocess.Popen(["swaybg", "-c", "#1f1a1a"])
     subprocess.Popen([os.path.expanduser("~/.config/qtile/autostart.sh")])
