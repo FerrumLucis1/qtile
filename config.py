@@ -274,10 +274,22 @@ def wifi_state():
         lines = []
     for line in lines:
         parts = line.split()
-        if len(parts) > 2:
-            quality = float(parts[2].rstrip(".")) / 70  # link quality is out of 70
-            level = 3 if quality >= 0.75 else 2 if quality >= 0.5 else 1 if quality >= 0.25 else 0
-            return radio_on, True, level
+        if len(parts) < 4:
+            continue
+        iface = parts[0].rstrip(":")
+        try:
+            up = open(f"/sys/class/net/{iface}/operstate").read().strip() == "up"
+        except OSError:
+            up = False
+        if not up:
+            continue
+        dbm = float(parts[3].rstrip("."))
+        if dbm < 0:  # signal level in dBm (most drivers)
+            level = 3 if dbm >= -60 else 2 if dbm >= -70 else 1 if dbm >= -80 else 0
+        else:  # fall back to link quality out of 70
+            q = float(parts[2].rstrip(".")) / 70
+            level = 3 if q >= 0.75 else 2 if q >= 0.5 else 1 if q >= 0.25 else 0
+        return radio_on, True, level
     return radio_on, False, 0
 
 
@@ -327,12 +339,24 @@ class WifiArcs(base._Widget):
         self.drawer.draw(offsetx=self.offsetx, offsety=self.offsety, width=self.length)
 
 
+def bt_on():
+    """Bluetooth counts as on when its radio isn't blocked (reads sysfs, no programs started)."""
+    import glob
+    found = False
+    for t in glob.glob("/sys/class/rfkill/*/type"):
+        try:
+            if open(t).read().strip() == "bluetooth":
+                found = True
+                d = t[:-4]
+                if open(d + "soft").read().strip() == "1" or open(d + "hard").read().strip() == "1":
+                    return False
+        except OSError:
+            pass
+    return found
+
+
 def bt_icon():
-    try:
-        out = subprocess.run(["bluetoothctl", "show"], capture_output=True, text=True, timeout=2).stdout
-    except Exception:
-        out = ""
-    colour = BLUE if "Powered: yes" in out else fg
+    colour = BLUE if bt_on() else fg
     return f'<span foreground="{colour}">\uf293</span>'
 
 
@@ -400,7 +424,7 @@ screens = [
                 widget.CPU(format="cpu {load_percent:.0f}%"),
                 widget.Sep(linewidth=2, padding=10, size_percent=60, foreground=accent),
                 widget.Battery(update_interval=1, format="bat {char}{percent:2.0%}", charge_char="\uf0e7 ", discharge_char="", full_char="\uf00c ", empty_char="", unknown_char="", low_percentage=0.2, low_foreground="#c47a74"),
-                widget.GenPollText(func=bt_icon, update_interval=10, padding=8, mouse_callbacks={"Button1": menu("btmenu")}),
+                widget.GenPollText(func=bt_icon, update_interval=1, padding=8, mouse_callbacks={"Button1": menu("btmenu")}),
                 WifiArcs(mouse_callbacks={"Button1": menu("wifimenu")}),
                 widget.TextBox("⏻", mouse_callbacks={"Button1": lazy.spawn(os.path.expanduser("~/qtile/powermenu.sh"))}),
             ],

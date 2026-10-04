@@ -22,8 +22,21 @@ def btctl(*args):
         return ""
 
 
+def radio_unblocked():
+    import glob
+    for t in glob.glob("/sys/class/rfkill/*/type"):
+        try:
+            if open(t).read().strip() == "bluetooth":
+                d = t[:-4]
+                if open(d + "soft").read().strip() == "1" or open(d + "hard").read().strip() == "1":
+                    return False
+        except OSError:
+            pass
+    return True
+
+
 def powered():
-    return "Powered: yes" in btctl("show")
+    return radio_unblocked() and "Powered: yes" in btctl("show")
 
 
 def devices(kind=None):
@@ -71,7 +84,7 @@ class BtMenu(Popup):
         if state:
             run_bg(f"rfkill unblock bluetooth; sleep 1; bluetoothctl power on; sleep 1; {relaunch_cmd()}")
         else:
-            run_bg("bluetoothctl power off")
+            run_bg("bluetoothctl power off; rfkill block bluetooth")
         self.destroy()
 
     def pick(self, mac, name, is_connected):
