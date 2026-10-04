@@ -257,7 +257,7 @@ BLUE = "#4aa3ff"
 
 
 def wifi_state():
-    """Return (radio_on, connected, level 0-3) from sysfs/procfs - no programs started."""
+    """Return (radio_on, connected, level 0-3)."""
     import glob
     radio_on = True
     for t in glob.glob("/sys/class/rfkill/*/type"):
@@ -268,29 +268,40 @@ def wifi_state():
                     radio_on = False
         except OSError:
             pass
-    try:
-        lines = open("/proc/net/wireless").read().splitlines()[2:]
-    except OSError:
-        lines = []
-    for line in lines:
-        parts = line.split()
-        if len(parts) < 4:
-            continue
-        iface = parts[0].rstrip(":")
+    for d in glob.glob("/sys/class/net/*/wireless"):
+        iface = d.split("/")[4]
         try:
-            up = open(f"/sys/class/net/{iface}/operstate").read().strip() == "up"
+            if open(f"/sys/class/net/{iface}/operstate").read().strip() != "up":
+                continue
         except OSError:
-            up = False
-        if not up:
             continue
-        dbm = float(parts[3].rstrip("."))
-        if dbm < 0:  # signal level in dBm (most drivers)
-            level = 3 if dbm >= -60 else 2 if dbm >= -70 else 1 if dbm >= -80 else 0
-        else:  # fall back to link quality out of 70
-            q = float(parts[2].rstrip(".")) / 70
-            level = 3 if q >= 0.75 else 2 if q >= 0.5 else 1 if q >= 0.25 else 0
-        return radio_on, True, level
+        return radio_on, True, wifi_level(iface)
     return radio_on, False, 0
+
+
+def wifi_level(iface):
+    """Signal bars 0-3. Uses `iw` (tiny, fast); falls back to nmcli if iw is missing."""
+    try:
+        out = subprocess.run(["iw", "dev", iface, "link"], capture_output=True, text=True, timeout=1).stdout
+        for line in out.splitlines():
+            if "signal:" in line:
+                dbm = float(line.split()[1])
+                return 3 if dbm >= -60 else 2 if dbm >= -70 else 1 if dbm >= -80 else 0
+        return 0
+    except FileNotFoundError:
+        pass
+    except Exception:
+        return 0
+    try:
+        out = subprocess.run(["nmcli", "-t", "-f", "IN-USE,SIGNAL", "dev", "wifi", "list", "--rescan", "no"],
+                             capture_output=True, text=True, timeout=2).stdout
+        for line in out.splitlines():
+            if line.startswith("*:"):
+                pct = int(line.split(":")[1])
+                return 3 if pct >= 70 else 2 if pct >= 50 else 1 if pct >= 30 else 0
+    except Exception:
+        pass
+    return 0
 
 
 class WifiArcs(base._Widget):
