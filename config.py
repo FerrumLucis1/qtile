@@ -430,8 +430,11 @@ screens = [
                 widget.Spacer(),
                 widget.StatusNotifier(icon_size=16, padding=4),  # tray icons (Wayland-compatible)
                 widget.DF(visible_on_warn=False, format="disk {r:.0f}%", fontsize=13),
+                widget.Sep(linewidth=1, padding=8, size_percent=50, foreground=dim),
                 widget.Volume(fmt="vol {}", fontsize=13),
+                widget.Sep(linewidth=1, padding=8, size_percent=50, foreground=dim),
                 widget.Memory(format="mem {MemPercent:.0f}%", fontsize=13),
+                widget.Sep(linewidth=1, padding=8, size_percent=50, foreground=dim),
                 widget.CPU(format="cpu {load_percent:.0f}%", fontsize=13),
                 widget.Sep(linewidth=2, padding=10, size_percent=60, foreground=accent),
                 widget.Battery(update_interval=1, fontsize=13, format="bat {char}{percent:2.0%}", charge_char="\uf0e7 ", discharge_char="", full_char="\uf00c ", empty_char="", unknown_char="", low_percentage=0.2, low_foreground="#c47a74"),
