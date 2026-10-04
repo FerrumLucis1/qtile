@@ -7,6 +7,7 @@ import subprocess
 
 from libqtile import bar, hook, layout, qtile, widget
 from libqtile.backend.wayland import InputConfig
+from libqtile.command.base import expose_command
 from libqtile.config import Click, Drag, Group, Key, Match, Screen
 from libqtile.lazy import lazy
 from libqtile.utils import guess_terminal
@@ -48,9 +49,9 @@ keys = [
     *[Key([mod, "shift"], k, lazy.window.resize_floating(x, y)) for k, x, y in
       (("Left", -30, 0), ("Right", 30, 0), ("Up", 0, -30), ("Down", 0, 30))],
     # media keys
-    Key([], "XF86AudioRaiseVolume", lazy.spawn("wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+")),
-    Key([], "XF86AudioLowerVolume", lazy.spawn("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-")),
-    Key([], "XF86AudioMute", lazy.spawn("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle")),
+    Key([], "XF86AudioRaiseVolume", lazy.widget["volicon"].change("5%+")),
+    Key([], "XF86AudioLowerVolume", lazy.widget["volicon"].change("5%-")),
+    Key([], "XF86AudioMute", lazy.widget["volicon"].toggle_mute()),
     Key([], "XF86MonBrightnessUp", lazy.spawn("brightnessctl set 5%+")),
     Key([], "XF86MonBrightnessDown", lazy.spawn("brightnessctl set 5%-")),
     # second screen (TV)
@@ -81,7 +82,7 @@ layouts = [
     layout.Columns(margin=8, border_width=2, border_focus=accent, border_normal=bg),
     layout.Max(),
 ]
-POPUPS = {"powermenu", "wifimenu", "btmenu"}  # GTK menus opened from the bar
+POPUPS = {"powermenu", "wifimenu", "btmenu", "volmenu", "batmenu"}  # GTK menus opened from the bar
 floating_layout = layout.Floating(float_rules=[
     *layout.Floating.default_float_rules,
     *[Match(wm_class=c) for c in ("confirmreset", "makebranch", "maketag", "ssh-askpass", *POPUPS)],
@@ -194,6 +195,184 @@ class WifiArcs(base._Widget):
         self.drawer.draw(offsetx=self.offsetx, offsety=self.offsety, width=self.length)
 
 
+def text_layout(w, text=""):
+    return w.drawer.textlayout(text, fg, w.font, w.fontsize, None, wrap=False)
+
+
+class VolumeIcon(base._Widget):
+    """Speaker drawn with 0-3 sound waves for the volume level (an X when muted).
+    While the volume is being changed it shows the percentage for a moment."""
+
+    defaults = [
+        ("update_interval", 2, "Seconds between checks for outside changes"),
+        ("show_for", 1.5, "Seconds to show the percentage after a change"),
+        ("font", "JetBrainsMono Nerd Font", ""),
+        ("fontsize", 13, ""),
+    ]
+
+    def __init__(self, **config):
+        base._Widget.__init__(self, bar.CALCULATED, **config)
+        self.add_defaults(VolumeIcon.defaults)
+        self.vol, self.muted, self.showing = 0, False, None
+
+    def _configure(self, qtile, bar_):
+        base._Widget._configure(self, qtile, bar_)
+        self.layout = text_layout(self)
+
+    def calculate_length(self):
+        return 40
+
+    def read(self):
+        try:
+            out = subprocess.run(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"],
+                                 capture_output=True, text=True, timeout=1).stdout
+            self.vol = round(float(out.split()[1]) * 100)
+            self.muted = "MUTED" in out
+        except Exception:
+            pass
+
+    def timer_setup(self):
+        self.poll()
+
+    def poll(self):
+        before = (self.vol, self.muted)
+        self.read()
+        if (self.vol, self.muted) != before:
+            self.draw()
+        self.timeout_add(self.update_interval, self.poll)
+
+    def flash(self):
+        """Show the percentage for a moment, then go back to the icon."""
+        if self.showing:
+            self.showing.cancel()
+        self.showing = self.timeout_add(self.show_for, self.end_flash)
+        self.draw()
+
+    def end_flash(self):
+        self.showing = None
+        self.draw()
+
+    @expose_command()
+    def change(self, step="5%+"):
+        subprocess.run(["wpctl", "set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", step], timeout=1)
+        self.read()
+        self.flash()
+
+    @expose_command()
+    def toggle_mute(self):
+        subprocess.run(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"], timeout=1)
+        self.read()
+        self.flash()
+
+    @expose_command()
+    def refresh(self):
+        self.read()
+        self.draw()
+
+    def draw(self):
+        self.drawer.clear(self.background or self.bar.background)
+        if self.showing:
+            self.layout.text = "mute" if self.muted else f"{self.vol}%"
+            self.layout.colour = dim if self.muted else fg
+            self.layout.draw((self.length - self.layout.width) / 2,
+                             (self.bar.height - self.layout.height) / 2)
+        else:
+            ctx = self.drawer.ctx
+            x, cy = self.length / 2 - 9, self.bar.height / 2
+            self.drawer.set_source_rgb(dim if self.muted else fg)
+            ctx.new_path()  # speaker: small box + cone
+            ctx.move_to(x, cy - 3)
+            ctx.line_to(x + 3, cy - 3)
+            ctx.line_to(x + 8, cy - 7)
+            ctx.line_to(x + 8, cy + 7)
+            ctx.line_to(x + 3, cy + 3)
+            ctx.line_to(x, cy + 3)
+            ctx.close_path()
+            ctx.fill()
+            ctx.set_line_width(1.8)
+            if self.muted or self.vol == 0:
+                for a, b in ((-1, 1), (1, -1)):
+                    ctx.new_path()
+                    ctx.move_to(x + 11, cy - 3 * a)
+                    ctx.line_to(x + 17, cy - 3 * b)
+                    ctx.stroke()
+            else:
+                level = 1 if self.vol < 34 else 2 if self.vol < 67 else 3
+                for i, r in enumerate((4, 7.5, 11), start=1):
+                    self.drawer.set_source_rgb(fg if i <= level else dim)
+                    ctx.new_path()
+                    ctx.arc(x + 6, cy, r, -math.pi / 4, math.pi / 4)
+                    ctx.stroke()
+        self.drawer.draw(offsetx=self.offsetx, offsety=self.offsety, width=self.length)
+
+
+def battery_info():
+    """(percent, status) from sysfs."""
+    b = "/sys/class/power_supply/BAT0/"
+    try:
+        return int(read(b + "capacity")), read(b + "status")
+    except ValueError:
+        return 0, "Unknown"
+
+
+class BatteryIcon(base._Widget):
+    """Battery outline filled to the charge level, with the percentage to the right.
+    Red when low, lightning bolt when charging."""
+
+    defaults = [
+        ("update_interval", 1, "Seconds between checks"),
+        ("low", 20, "Percent at which it turns red"),
+        ("font", "JetBrainsMono Nerd Font", ""),
+        ("fontsize", 13, ""),
+    ]
+
+    def __init__(self, **config):
+        base._Widget.__init__(self, bar.CALCULATED, **config)
+        self.add_defaults(BatteryIcon.defaults)
+        self.state = None
+
+    def _configure(self, qtile, bar_):
+        base._Widget._configure(self, qtile, bar_)
+        self.layout = text_layout(self, "\uf0e7100%")
+        self.text_w = self.layout.width  # widest possible text, so the bar doesn't jump
+
+    def calculate_length(self):
+        return 26 + self.text_w
+
+    def timer_setup(self):
+        self.poll()
+
+    def poll(self):
+        new = battery_info()
+        if new != self.state:
+            self.state = new
+            self.draw()
+        self.timeout_add(self.update_interval, self.poll)
+
+    def draw(self):
+        if not self.state:
+            return
+        pct, status = self.state
+        charging = status == "Charging"
+        colour = LOW if pct <= self.low and not charging else fg
+        self.drawer.clear(self.background or self.bar.background)
+        ctx = self.drawer.ctx
+        x, y, w, h = 3, self.bar.height / 2 - 5, 18, 10
+        self.drawer.set_source_rgb(colour)
+        ctx.set_line_width(1.5)
+        ctx.new_path()
+        ctx.rectangle(x, y, w, h)  # body
+        ctx.stroke()
+        ctx.rectangle(x + w, y + 3, 2, 4)  # terminal nub
+        ctx.fill()
+        ctx.rectangle(x + 2, y + 2, (w - 4) * max(pct, 3) / 100, h - 4)  # charge level
+        ctx.fill()
+        self.layout.text = ("\uf0e7" if charging else "") + f"{pct}%"
+        self.layout.colour = colour
+        self.layout.draw(26, (self.bar.height - self.layout.height) / 2)
+        self.drawer.draw(offsetx=self.offsetx, offsety=self.offsety, width=self.length)
+
+
 def bt_icon():
     return f'<span foreground="{BLUE if radio_on("bluetooth") else fg}"></span>'
 
@@ -227,17 +406,17 @@ screens = [
                 widget.StatusNotifier(icon_size=16, padding=4),  # tray icons
                 widget.DF(visible_on_warn=False, format="disk {r:.0f}%", fontsize=SMALL),
                 sep(),
-                widget.Volume(fmt="vol {}", fontsize=SMALL, update_interval=1),
-                sep(),
                 widget.Memory(format="mem {MemPercent:.0f}%", fontsize=SMALL),
                 sep(),
                 widget.CPU(format="cpu {load_percent:.0f}%", fontsize=SMALL),
                 sep(),
-                widget.Battery(
-                    update_interval=1, fontsize=SMALL, format="bat {char}{percent:2.0%}",
-                    charge_char=" ", discharge_char="", full_char=" ",
-                    empty_char="", unknown_char="", low_percentage=0.2, low_foreground=LOW,
-                ),
+                VolumeIcon(name="volicon", mouse_callbacks={
+                    "Button1": menu("volmenu"),
+                    "Button4": lazy.widget["volicon"].change("5%+"),  # scroll up
+                    "Button5": lazy.widget["volicon"].change("5%-"),  # scroll down
+                }),
+                sep(),
+                BatteryIcon(mouse_callbacks={"Button1": menu("batmenu")}),
                 widget.GenPollText(func=bt_icon, update_interval=1, fontsize=18, padding=8,
                                    mouse_callbacks={"Button1": menu("btmenu")}),
                 WifiArcs(mouse_callbacks={"Button1": menu("wifimenu")}),

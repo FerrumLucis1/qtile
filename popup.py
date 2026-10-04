@@ -24,6 +24,10 @@ entry { background: #232a26; border: 1px solid #7fa38a; margin: 6px 14px 10px 14
 switch { background: #2c3a31; border: none; }
 switch:checked { background: #7fa38a; }
 switch slider { background: #d5ddd7; border: none; }
+scale trough { background: #2c3a31; min-height: 6px; border-radius: 3px; border: none; }
+scale highlight { background: #7fa38a; border-radius: 3px; }
+scale slider { background: #d5ddd7; min-width: 14px; min-height: 14px; border-radius: 7px; border: none; }
+scale value { color: #d5ddd7; }
 """
 
 
@@ -95,6 +99,30 @@ class Popup(Gtk.Window):
             b.get_style_context().add_class("dim")
         b.connect("clicked", lambda *_: callback())
         self.box.pack_start(b, False, False, 0)
+
+    def add_slider(self, value, on_change, lo=0, hi=100, delay=120):
+        """Horizontal slider; on_change(int) fires once dragging pauses for `delay` ms."""
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, lo, hi, 1)
+        scale.set_value(value)
+        scale.set_draw_value(True)
+        scale.set_value_pos(Gtk.PositionType.RIGHT)
+        scale.set_margin_start(14)
+        scale.set_margin_end(14)
+        pending = {"id": None}
+
+        def fire():
+            pending["id"] = None
+            on_change(int(scale.get_value()))
+            return False
+
+        def changed(_s):
+            if pending["id"]:
+                GLib.source_remove(pending["id"])
+            pending["id"] = GLib.timeout_add(delay, fire)
+
+        scale.connect("value-changed", changed)
+        self.box.pack_start(scale, False, False, 0)
+        return scale
 
     def add_entry(self, placeholder, on_submit, secret=True):
         e = Gtk.Entry(placeholder_text=placeholder, visibility=not secret)
