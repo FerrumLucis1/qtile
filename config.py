@@ -164,7 +164,7 @@ class WifiArcs(base._Widget):
         self.state: tuple[bool, bool, int] | None = None
 
     def calculate_length(self) -> int:
-        return 30
+        return 36  # a little wider than the icon so it is easy to click
 
     def timer_setup(self) -> None:
         self.poll()
@@ -422,7 +422,9 @@ screens = [
                 BatteryIcon(mouse_callbacks={"Button1": menu("batmenu")}),
                 widget.GenPollText(func=bt_icon, update_interval=1, fontsize=18, padding=8,
                                    mouse_callbacks={"Button1": menu("btmenu")}),
+                sep(),
                 WifiArcs(mouse_callbacks={"Button1": menu("wifimenu")}),
+                sep(),
                 widget.TextBox("⏻", fontsize=18,
                                mouse_callbacks={"Button1": lazy.spawn(f"{HOME_REPO}/powermenu.sh")}),
             ],
