@@ -436,7 +436,7 @@ screens = [
                 widget.Memory(format="mem {MemPercent:.0f}%", fontsize=13),
                 widget.Sep(linewidth=1, padding=8, size_percent=50, foreground=dim),
                 widget.CPU(format="cpu {load_percent:.0f}%", fontsize=13),
-                widget.Sep(linewidth=2, padding=10, size_percent=60, foreground=accent),
+                widget.Sep(linewidth=1, padding=8, size_percent=50, foreground=dim),
                 widget.Battery(update_interval=1, fontsize=13, format="bat {char}{percent:2.0%}", charge_char="\uf0e7 ", discharge_char="", full_char="\uf00c ", empty_char="", unknown_char="", low_percentage=0.2, low_foreground="#c47a74"),
                 widget.GenPollText(func=bt_icon, update_interval=1, fontsize=18, padding=8, mouse_callbacks={"Button1": menu("btmenu")}),
                 WifiArcs(mouse_callbacks={"Button1": menu("wifimenu")}),
