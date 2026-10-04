@@ -313,7 +313,7 @@ screens = [
                 widget.TextBox("⏻", mouse_callbacks={"Button1": lazy.spawn(os.path.expanduser("~/qtile/powermenu.sh"))}),
             ],
             24,
-            background=bg,
+            background="#1e3527",  # dark green bar
             margin=[6, 6, 0, 6],
         ),
     ),
