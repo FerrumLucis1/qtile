@@ -420,6 +420,7 @@ screens = [
                 }),
                 sep(),
                 BatteryIcon(mouse_callbacks={"Button1": menu("batmenu")}),
+                sep(),
                 widget.GenPollText(func=bt_icon, update_interval=1, fontsize=18, padding=8,
                                    mouse_callbacks={"Button1": menu("btmenu")}),
                 sep(),
