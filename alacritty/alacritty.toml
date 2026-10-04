@@ -47,7 +47,7 @@ family = "MesloLGS Nerd Font Mono"
 style = "Italic"
 
 [colors.primary]
-background = "#1a1f1c"
+background = "#14261b"
 foreground = "#d5ddd7"
 
 [colors.normal]
