@@ -303,7 +303,7 @@ screens = [
                 widget.Spacer(),
                 widget.Clock(format="%a %b %d  %H:%M"),
                 widget.Spacer(),
-                widget.KeyboardLayout(configured_keyboard=["us"]),
+                widget.StatusNotifier(icon_size=16, padding=4),  # tray icons (Wayland-compatible)
                 widget.DF(visible_on_warn=False, format="/ {r:.0f}%"),
                 widget.Volume(fmt="vol {}"),
                 widget.Memory(format="mem {MemPercent:.0f}%"),
