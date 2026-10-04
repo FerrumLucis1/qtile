@@ -195,6 +195,7 @@ floating_layout = layout.Floating(
         # Run the utility of `xprop` to see the wm class and name of an X client.
         *layout.Floating.default_float_rules,
         Match(wm_class="confirmreset"),  # gitk
+        Match(wm_class="powermenu"),  # power menu
         Match(wm_class="makebranch"),  # gitk
         Match(wm_class="maketag"),  # gitk
         Match(wm_class="ssh-askpass"),  # ssh-askpass
@@ -248,6 +249,14 @@ wl_input_rules = {
 }
 
 keys.append(Key([mod], "d", lazy.spawn("fuzzel"), desc="Launcher"))
+
+@hook.subscribe.client_managed
+def place_powermenu(c):
+    # put the power menu just under the bar, in the top-right corner
+    if "powermenu" in (c.get_wm_class() or []):
+        scr = qtile.current_screen
+        w, h = (c.width or 170), (c.height or 120)
+        c.place(scr.x + scr.width - w - 6, scr.y + 36, w, h, 0, "#7fa38a", above=True)
 
 @hook.subscribe.startup_once
 def autostart():
