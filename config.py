@@ -435,9 +435,9 @@ screens = [
                 widget.CPU(format="cpu {load_percent:.0f}%"),
                 widget.Sep(linewidth=2, padding=10, size_percent=60, foreground=accent),
                 widget.Battery(update_interval=1, format="bat {char}{percent:2.0%}", charge_char="\uf0e7 ", discharge_char="", full_char="\uf00c ", empty_char="", unknown_char="", low_percentage=0.2, low_foreground="#c47a74"),
-                widget.GenPollText(func=bt_icon, update_interval=1, padding=8, mouse_callbacks={"Button1": menu("btmenu")}),
+                widget.GenPollText(func=bt_icon, update_interval=1, fontsize=18, padding=8, mouse_callbacks={"Button1": menu("btmenu")}),
                 WifiArcs(mouse_callbacks={"Button1": menu("wifimenu")}),
-                widget.TextBox("⏻", mouse_callbacks={"Button1": lazy.spawn(os.path.expanduser("~/qtile/powermenu.sh"))}),
+                widget.TextBox("⏻", fontsize=18, mouse_callbacks={"Button1": lazy.spawn(os.path.expanduser("~/qtile/powermenu.sh"))}),
             ],
             24,
             background="#1e3527",  # dark green bar
