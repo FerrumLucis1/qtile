@@ -407,7 +407,7 @@ keys.extend([
 # ---- custom look ----
 bg, fg, dim, accent = "#1a1f1c", "#d5ddd7", "#6f7d74", "#7fa38a"
 
-widget_defaults = dict(font="JetBrainsMono Nerd Font", fontsize=12, padding=6, foreground=fg)
+widget_defaults = dict(font="JetBrainsMono Nerd Font", fontsize=15, padding=6, foreground=fg)
 extension_defaults = widget_defaults.copy()
 
 layouts = [
