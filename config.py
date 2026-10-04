@@ -196,6 +196,8 @@ floating_layout = layout.Floating(
         *layout.Floating.default_float_rules,
         Match(wm_class="confirmreset"),  # gitk
         Match(wm_class="powermenu"),  # power menu
+        Match(wm_class="wifimenu"),  # wifi menu
+        Match(wm_class="btmenu"),  # bluetooth menu
         Match(wm_class="makebranch"),  # gitk
         Match(wm_class="maketag"),  # gitk
         Match(wm_class="ssh-askpass"),  # ssh-askpass
@@ -250,12 +252,36 @@ wl_input_rules = {
 
 keys.append(Key([mod], "d", lazy.spawn("fuzzel"), desc="Launcher"))
 
+def wifi_icon():
+    # connected if any wireless interface is up (reads sysfs, no programs started)
+    import glob
+    for d in glob.glob("/sys/class/net/*/wireless"):
+        try:
+            if open(d.replace("wireless", "operstate")).read().strip() == "up":
+                return "\uf1eb"
+        except OSError:
+            pass
+    return "\U000f05aa"
+
+
+def bt_icon():
+    try:
+        out = subprocess.run(["bluetoothctl", "show"], capture_output=True, text=True, timeout=2).stdout
+    except Exception:
+        out = ""
+    return "\uf293" if "Powered: yes" in out else "\U000f00b2"
+
+
+def menu(name):
+    return lazy.spawn([os.path.expanduser("~/qtile/menu.sh"), name])
+
+
 @hook.subscribe.client_managed
 def place_powermenu(c):
-    # put the power menu just under the bar, in the top-right corner
-    if "powermenu" in (c.get_wm_class() or []):
+    # put the bar pop-up menus just under the bar, in the top-right corner
+    if {"powermenu", "wifimenu", "btmenu"} & set(c.get_wm_class() or []):
         scr = qtile.current_screen
-        w, h = (c.width or 170), (c.height or 120)
+        w, h = (c.width or 240), (c.height or 120)
         c.place(scr.x + scr.width - w - 6, scr.y + 36, w, h, 0, "#7fa38a", above=True)
 
 @hook.subscribe.startup_once
@@ -304,6 +330,8 @@ screens = [
                 widget.Clock(format="%a %b %d  %H:%M"),
                 widget.Spacer(),
                 widget.StatusNotifier(icon_size=16, padding=4),  # tray icons (Wayland-compatible)
+                widget.GenPollText(func=bt_icon, update_interval=10, padding=6, mouse_callbacks={"Button1": menu("btmenu")}),
+                widget.GenPollText(func=wifi_icon, update_interval=5, padding=6, mouse_callbacks={"Button1": menu("wifimenu")}),
                 widget.DF(visible_on_warn=False, format="/ {r:.0f}%"),
                 widget.Volume(fmt="vol {}"),
                 widget.Memory(format="mem {MemPercent:.0f}%"),
