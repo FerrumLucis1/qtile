@@ -50,6 +50,11 @@ def size(o: dict[str, Any]) -> tuple[int, int]:
     return w, h
 
 
+def at(o: dict[str, Any], x: int, y: int) -> bool:
+    pos = o.get("position") or {}
+    return bool(pos.get("x") == x and pos.get("y") == y)
+
+
 def load() -> dict[str, str]:
     try:
         with open(SAVE) as f:
@@ -87,14 +92,16 @@ def apply(choices: dict[str, str] | None = None) -> None:
     # to make room for monitors placed to its left or above it
     lx = max((w for _, side, w, _ in placed if side == "left"), default=0)
     ly = max((h for _, side, _, h in placed if side == "above"), default=0)
-    cmd += ["--output", str(laptop["name"]), "--pos", f"{lx},{ly}"]
+    if not at(laptop, lx, ly):  # only touch outputs that actually move (each change can flicker)
+        cmd += ["--output", str(laptop["name"]), "--pos", f"{lx},{ly}"]
     for o, side, w, h in placed:
         x, y = {
             "left": (lx - w, ly),
             "above": (lx, ly - h),
             "below": (lx, ly + lh),
         }.get(side, (lx + lw, ly))
-        cmd += ["--output", str(o["name"]), "--pos", f"{x},{y}"]
+        if not at(o, x, y):
+            cmd += ["--output", str(o["name"]), "--pos", f"{x},{y}"]
     if len(cmd) > 1:
         subprocess.run(cmd, timeout=5)
 
