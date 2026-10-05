@@ -41,6 +41,7 @@ PACKAGES=(
     # desktop apps and helpers
     alacritty fuzzel mako libnotify swaybg lxpolkit
     grim slurp wl-clipboard swaylock swayidle
+    thunar tumbler ristretto
     # config management
     git gh
 )
@@ -96,6 +97,7 @@ link_configs() {
     link fuzzel/fuzzel.ini      "$HOME/.config/fuzzel/fuzzel.ini"
     link mako/config            "$HOME/.config/mako/config"
     link swaylock/config        "$HOME/.config/swaylock/config"
+    link gtk-3.0/settings.ini   "$HOME/.config/gtk-3.0/settings.ini"
 }
 
 system_setup() {
@@ -118,6 +120,10 @@ system_setup() {
         run sudo systemctl enable sddm
         run sudo systemctl set-default graphical.target
     fi
+
+    say "Default apps"
+    run xdg-mime default thunar.desktop inode/directory
+    run xdg-mime default org.xfce.ristretto.desktop image/png image/jpeg image/gif image/webp image/bmp image/tiff
 
     say "Power"
     run sudo systemctl enable --now tuned

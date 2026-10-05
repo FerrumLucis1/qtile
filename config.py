@@ -145,6 +145,7 @@ keys = [
         Key([mod], "x", lazy.spawn(terminal), desc="Terminal"),
         Key([mod], "d", lazy.spawn("fuzzel"), desc="App launcher"),
         Key([mod], "b", lazy.spawn("brave-browser --ozone-platform=wayland"), desc="Brave"),
+        Key([mod], "e", lazy.spawn("thunar"), desc="File manager"),
     ]),
     *section("Monitors", [
         Key([mod], "comma", focus_side("left"), desc="Focus monitor on the left"),
