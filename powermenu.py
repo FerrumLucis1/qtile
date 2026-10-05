@@ -11,6 +11,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
 ITEMS = [
+    ("Lock", ["swaylock", "-f"]),
     ("Shutdown", ["systemctl", "poweroff"]),
     ("Sleep", ["systemctl", "suspend"]),
     ("Log out", ["qtile", "cmd-obj", "-o", "cmd", "-f", "shutdown"]),

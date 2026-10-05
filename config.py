@@ -1,6 +1,7 @@
 # Qtile config (Wayland) - Gabriel's laptop
 # Backup of the pre-cleanup version: branch "backup-pre-cleanup" on GitHub.
 import glob
+import json
 import math
 import os
 import subprocess
@@ -9,7 +10,7 @@ from typing import Any, cast
 from libqtile import bar, hook, layout, qtile, widget
 from libqtile.backend.wayland import InputConfig
 from libqtile.command.base import expose_command
-from libqtile.config import Click, Drag, Group, Key, Match, Output, Screen
+from libqtile.config import Click, Drag, Group, IdleInhibitor, IdleTimer, Key, Match, Output, Screen
 from libqtile.lazy import lazy
 from libqtile.utils import guess_terminal
 from libqtile.widget import base
@@ -17,7 +18,8 @@ from libqtile.widget import base
 # ---------------------------------------------------------------- colours
 bg, fg, dim, accent = "#1a1f1c", "#d5ddd7", "#6f7d74", "#7fa38a"
 BAR_BG, BLUE, LOW = "#1e3527", "#4aa3ff", "#c47a74"
-HOME_REPO = os.path.expanduser("~/qtile")
+# the repo this config lives in (config.py is symlinked from there), wherever it was cloned
+HOME_REPO = os.path.dirname(os.path.realpath(__file__))
 
 mod = "mod4"
 terminal = guess_terminal()
@@ -68,59 +70,119 @@ def move_other(q: Any) -> None:
         target.group.focus(win)
 
 # ---------------------------------------------------------------- keys
+def section(name: str, ks: list[Key]) -> list[Key]:
+    """Tag keys with a heading for the Super+/ cheat sheet."""
+    for k in ks:
+        setattr(k, "section", name)
+    return ks
+
+
+@lazy.function
+def cheat_sheet(q: Any) -> None:
+    """Super+/ : dump the current key bindings and open the cheat sheet."""
+    names = {"mod4": "Super", "shift": "Shift", "control": "Ctrl", "mod1": "Alt"}
+    summary = [  # one line each instead of 4-9 near-identical keys
+        ("Windows", "Super + h/j/k/l", "Focus window left/down/up/right"),
+        ("Windows", "Super + Shift + h/j/k/l", "Move window"),
+        ("Windows", "Super + Ctrl + h/j/k/l", "Grow window"),
+        ("Windows", "Super + Ctrl + arrows", "Move floating window"),
+        ("Windows", "Super + Shift + arrows", "Resize floating window"),
+        ("Workspaces", "Super + 1-9", "Switch to workspace"),
+        ("Workspaces", "Super + Shift + 1-9", "Move window to workspace"),
+    ]
+    rows = [{"section": a, "keys": b, "desc": c} for a, b, c in summary if a == "Windows"] + [
+        {
+            "section": getattr(k, "section", "Other"),
+            "keys": " + ".join([names.get(m, m) for m in k.modifiers] + [KEY_LABELS.get(k.key, k.key)]),
+            "desc": k.desc,
+        }
+        for k in q.config.keys if k.desc and not getattr(k, "hidden", False)
+    ]
+    rows += [{"section": a, "keys": b, "desc": c} for a, b, c in summary if a != "Windows"]
+    path = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "qtile-keys.json")
+    with open(path, "w") as f:
+        json.dump(rows, f)
+    subprocess.Popen([f"{HOME_REPO}/menu.sh", "cheatsheet"])
+
+
+KEY_LABELS = {
+    "comma": ",", "period": ".", "slash": "/", "Return": "Enter", "space": "Space",
+    "Escape": "Esc", "Print": "PrtSc", "Left": "←", "Right": "→", "Up": "↑", "Down": "↓",
+    "XF86AudioRaiseVolume": "Vol Up", "XF86AudioLowerVolume": "Vol Down", "XF86AudioMute": "Mute",
+    "XF86MonBrightnessUp": "Bright Up", "XF86MonBrightnessDown": "Bright Down",
+}
+DIRS = (("h", "left"), ("l", "right"), ("j", "down"), ("k", "up"))
+ARROWS = (("Left", -30, 0), ("Right", 30, 0), ("Up", 0, -30), ("Down", 0, 30))
+
+
+def hidden(ks: list[Key]) -> list[Key]:
+    """Keep these out of the cheat sheet (a summary line is shown instead)."""
+    for k in ks:
+        setattr(k, "hidden", True)
+    return ks
+
+
 keys = [
-    # focus / move / grow windows (h j k l)
-    *[Key([mod], k, getattr(lazy.layout, d)(), desc=f"Focus {d}")
-      for k, d in zip("hljk", ("left", "right", "down", "up"))],
-    *[Key([mod, "shift"], k, getattr(lazy.layout, f"shuffle_{d}")(), desc=f"Move window {d}")
-      for k, d in zip("hljk", ("left", "right", "down", "up"))],
-    *[Key([mod, "control"], k, getattr(lazy.layout, f"grow_{d}")(), desc=f"Grow window {d}")
-      for k, d in zip("hljk", ("left", "right", "down", "up"))],
-    Key([mod], "space", lazy.layout.next(), desc="Focus next window"),
-    Key([mod], "n", lazy.layout.normalize(), desc="Reset window sizes"),
-    Key([mod, "shift"], "Return", lazy.layout.toggle_split(), desc="Toggle split"),
-    Key([mod], "Tab", lazy.next_layout(), desc="Next layout"),
-    Key([mod], "q", lazy.window.kill(), desc="Close window"),
-    Key([mod], "f", lazy.window.toggle_fullscreen(), desc="Toggle fullscreen"),
-    Key([mod], "t", lazy.window.toggle_floating(), desc="Toggle floating"),
-    Key([mod, "control"], "r", lazy.reload_config(), desc="Reload config"),
-    Key([mod, "control"], "q", lazy.shutdown(), desc="Quit Qtile"),
-    # apps
-    Key([mod], "x", lazy.spawn(terminal), desc="Terminal"),
-    Key([mod], "d", lazy.spawn("fuzzel"), desc="Launcher"),
-    Key([mod], "b", lazy.spawn("brave-browser --ozone-platform=wayland"), desc="Brave"),
-    # floating windows: Ctrl+Super+arrows move, Shift+Super+arrows resize
-    *[Key([mod, "control"], k, lazy.window.move_floating(x, y)) for k, x, y in
-      (("Left", -30, 0), ("Right", 30, 0), ("Up", 0, -30), ("Down", 0, 30))],
-    *[Key([mod, "shift"], k, lazy.window.resize_floating(x, y)) for k, x, y in
-      (("Left", -30, 0), ("Right", 30, 0), ("Up", 0, -30), ("Down", 0, 30))],
-    # media keys
-    Key([], "XF86AudioRaiseVolume", lazy.widget["volicon"].change("5%+")),
-    Key([], "XF86AudioLowerVolume", lazy.widget["volicon"].change("5%-")),
-    Key([], "XF86AudioMute", lazy.widget["volicon"].toggle_mute()),
-    Key([], "XF86MonBrightnessUp", lazy.spawn("brightnessctl set 5%+")),
-    Key([], "XF86MonBrightnessDown", lazy.spawn("brightnessctl set 5%-")),
-    # monitors: Super+, / Super+. focus the monitor to the left/right,
-    # add Shift to carry the focused window there; Super+O / Super+Shift+O cycle
-    Key([mod], "comma", focus_side("left"), desc="Focus monitor on the left"),
-    Key([mod], "period", focus_side("right"), desc="Focus monitor on the right"),
-    Key([mod, "shift"], "comma", move_side("left"), desc="Move window to monitor on the left"),
-    Key([mod, "shift"], "period", move_side("right"), desc="Move window to monitor on the right"),
-    Key([mod], "o", lazy.next_screen(), desc="Focus next monitor"),
-    Key([mod, "shift"], "o", move_other(), desc="Move window to next monitor"),
-    Key([mod], "p", lazy.spawn([f"{HOME_REPO}/menu.sh", "displaymenu"]), desc="Display settings"),
-    # Ctrl+Alt+F1..F7 switch virtual terminals
-    *[Key(["control", "mod1"], f"f{vt}", lazy.core.change_vt(vt), desc=f"Switch to VT{vt}")
-      for vt in range(1, 8)],
+    *section("Windows", [
+        *hidden([Key([mod], k, getattr(lazy.layout, d)(), desc=f"Focus window {d}") for k, d in DIRS]),
+        *hidden([Key([mod, "shift"], k, getattr(lazy.layout, f"shuffle_{d}")(), desc=f"Move window {d}")
+                 for k, d in DIRS]),
+        *hidden([Key([mod, "control"], k, getattr(lazy.layout, f"grow_{d}")(), desc=f"Grow window {d}")
+                 for k, d in DIRS]),
+        Key([mod], "space", lazy.layout.next(), desc="Focus next window"),
+        Key([mod], "n", lazy.layout.normalize(), desc="Reset window sizes"),
+        Key([mod, "shift"], "Return", lazy.layout.toggle_split(), desc="Toggle split"),
+        Key([mod], "Tab", lazy.next_layout(), desc="Next layout"),
+        Key([mod], "q", lazy.window.kill(), desc="Close window"),
+        Key([mod], "f", lazy.window.toggle_fullscreen(), desc="Toggle fullscreen"),
+        Key([mod], "t", lazy.window.toggle_floating(), desc="Toggle floating"),
+        *hidden([Key([mod, "control"], k, lazy.window.move_floating(x, y), desc=f"Move floating window {k}")
+                 for k, x, y in ARROWS]),
+        *hidden([Key([mod, "shift"], k, lazy.window.resize_floating(x, y), desc=f"Resize floating window {k}")
+                 for k, x, y in ARROWS]),
+    ]),
+    *section("Apps", [
+        Key([mod], "x", lazy.spawn(terminal), desc="Terminal"),
+        Key([mod], "d", lazy.spawn("fuzzel"), desc="App launcher"),
+        Key([mod], "b", lazy.spawn("brave-browser --ozone-platform=wayland"), desc="Brave"),
+    ]),
+    *section("Monitors", [
+        Key([mod], "comma", focus_side("left"), desc="Focus monitor on the left"),
+        Key([mod], "period", focus_side("right"), desc="Focus monitor on the right"),
+        Key([mod, "shift"], "comma", move_side("left"), desc="Move window to monitor on the left"),
+        Key([mod, "shift"], "period", move_side("right"), desc="Move window to monitor on the right"),
+        Key([mod], "o", lazy.next_screen(), desc="Focus next monitor"),
+        Key([mod, "shift"], "o", move_other(), desc="Move window to next monitor"),
+        Key([mod], "p", lazy.spawn([f"{HOME_REPO}/menu.sh", "displaymenu"]), desc="Display settings"),
+    ]),
+    *section("Screenshots", [
+        Key([], "Print", lazy.spawn([f"{HOME_REPO}/screenshot.sh", "full"]), desc="Screenshot of everything"),
+        Key(["shift"], "Print", lazy.spawn([f"{HOME_REPO}/screenshot.sh", "area"]), desc="Screenshot of an area"),
+        Key([mod, "shift"], "s", lazy.spawn([f"{HOME_REPO}/screenshot.sh", "area"]), desc="Screenshot of an area"),
+    ]),
+    *section("System", [
+        Key([mod], "Escape", lazy.spawn("swaylock -f"), desc="Lock screen"),
+        Key([mod], "slash", cheat_sheet(), desc="This cheat sheet"),
+        Key([mod, "control"], "r", lazy.reload_config(), desc="Reload config"),
+        Key([mod, "control"], "q", lazy.shutdown(), desc="Quit Qtile (log out)"),
+        Key([], "XF86AudioRaiseVolume", lazy.widget["volicon"].change("5%+"), desc="Volume up"),
+        Key([], "XF86AudioLowerVolume", lazy.widget["volicon"].change("5%-"), desc="Volume down"),
+        Key([], "XF86AudioMute", lazy.widget["volicon"].toggle_mute(), desc="Mute"),
+        Key([], "XF86MonBrightnessUp", lazy.spawn("brightnessctl set 5%+"), desc="Brightness up"),
+        Key([], "XF86MonBrightnessDown", lazy.spawn("brightnessctl set 5%-"), desc="Brightness down"),
+        # Ctrl+Alt+F1..F7 switch virtual terminals
+        *hidden([Key(["control", "mod1"], f"f{vt}", lazy.core.change_vt(vt), desc=f"Switch to VT{vt}")
+                 for vt in range(1, 8)]),
+    ]),
 ]
 
 groups = [Group(i) for i in "123456789"]
 for g in groups:
-    keys += [
-        Key([mod], g.name, lazy.group[g.name].toscreen(), desc=f"Switch to group {g.name}"),
+    keys += hidden([
+        Key([mod], g.name, lazy.group[g.name].toscreen(), desc=f"Switch to workspace {g.name}"),
         Key([mod, "shift"], g.name, lazy.window.togroup(g.name, switch_group=True),
-            desc=f"Move window to group {g.name}"),
-    ]
+            desc=f"Move window to workspace {g.name}"),
+    ])
 
 mouse = [
     Drag([mod], "Button1", lazy.window.set_position_floating(), start=lazy.window.get_position()),
@@ -133,7 +195,7 @@ layouts = [
     layout.Columns(margin=8, border_width=2, border_focus=accent, border_normal=bg),
     layout.Max(),
 ]
-POPUPS: set[str] = {"powermenu", "wifimenu", "btmenu", "volmenu", "batmenu", "displaymenu"}  # GTK menus opened from the bar
+POPUPS: set[str] = {"powermenu", "wifimenu", "btmenu", "volmenu", "batmenu", "displaymenu", "cheatsheet"}  # GTK menus opened from the bar
 floating_layout = layout.Floating(float_rules=[
     *layout.Floating.default_float_rules,
     *[Match(wm_class=c) for c in ("confirmreset", "makebranch", "maketag", "ssh-askpass", *POPUPS)],
@@ -147,6 +209,13 @@ wl_input_rules = {
 }
 
 # focus, floating, cursor and other general settings are left at Qtile defaults
+
+# idle: dim after 5 min, lock after 10 min; never while a window is fullscreen (videos)
+idle_timers = [
+    IdleTimer(300, lazy.spawn("brightnessctl -s set 20%"), lazy.spawn("brightnessctl -r")),
+    IdleTimer(600, lazy.spawn("swaylock -f")),
+]
+idle_inhibitors = [IdleInhibitor(when="fullscreen")]
 
 
 # ---------------------------------------------------------------- bar helpers
@@ -503,13 +572,13 @@ def generate_screens(outputs: list[Output]) -> list[Screen]:
 @hook.subscribe.client_managed
 def place_popup(c: Any) -> None:
     """Bar menus open under the bar in the top-right corner; the display menu
-    (Super+P) opens in the middle of the focused screen."""
+    (Super+P) and cheat sheet (Super+/) open in the middle of the focused screen."""
     classes = set(c.get_wm_class() or [])
     if not POPUPS & classes:
         return
     q = cast(Any, qtile)
     w, h = (c.width or 240), (c.height or 120)
-    if "displaymenu" in classes:
+    if classes & {"displaymenu", "cheatsheet"}:
         scr = q.current_screen
         x, y = scr.x + (scr.width - w) // 2, scr.y + (scr.height - h) // 2
     else:
@@ -534,6 +603,7 @@ def monitors_changed() -> None:
 
 @hook.subscribe.startup_once
 def autostart() -> None:
+    subprocess.Popen(["swayidle", "-w", "before-sleep", "swaylock -f"])  # lock on sleep / lid close
     subprocess.Popen([f"{HOME_REPO}/displaymenu.py", "--apply"])
     subprocess.Popen(["lxpolkit"])
     subprocess.Popen(["swaybg", "-c", "#1f1a1a"])

@@ -1,0 +1,24 @@
+# swaylock theme to match the Qtile setup (dark green)
+color=1a1f1c
+font=JetBrainsMono Nerd Font
+indicator-radius=90
+indicator-thickness=8
+ignore-empty-password
+show-failed-attempts
+
+inside-color=1e3527
+inside-clear-color=1e3527
+inside-ver-color=1e3527
+inside-wrong-color=3a1f1f
+ring-color=7fa38a
+ring-clear-color=6f7d74
+ring-ver-color=4aa3ff
+ring-wrong-color=c47a74
+key-hl-color=4aa3ff
+bs-hl-color=c47a74
+line-color=00000000
+separator-color=00000000
+text-color=d5ddd7
+text-clear-color=d5ddd7
+text-ver-color=d5ddd7
+text-wrong-color=c47a74
