@@ -494,12 +494,20 @@ def generate_screens(outputs: list[Output]) -> list[Screen]:
 # ---------------------------------------------------------------- hooks
 @hook.subscribe.client_managed
 def place_popup(c: Any) -> None:
-    """Put the bar's pop-up menus just under the bar, top-right corner."""
-    if POPUPS & set(c.get_wm_class() or []):
-        q = cast(Any, qtile)
+    """Bar menus open under the bar in the top-right corner; the display menu
+    (Super+P) opens in the middle of the focused screen."""
+    classes = set(c.get_wm_class() or [])
+    if not POPUPS & classes:
+        return
+    q = cast(Any, qtile)
+    w, h = (c.width or 240), (c.height or 120)
+    if "displaymenu" in classes:
+        scr = q.current_screen
+        x, y = scr.x + (scr.width - w) // 2, scr.y + (scr.height - h) // 2
+    else:
         scr = next((s for s in q.screens if s.top), q.current_screen)  # the screen with the bar
-        w, h = (c.width or 240), (c.height or 120)
-        c.place(scr.x + scr.width - w - 6, scr.y + 36, w, h, 0, accent, above=True)
+        x, y = scr.x + scr.width - w - 6, scr.y + 36
+    c.place(x, y, w, h, 0, accent, above=True)
 
 
 _known_outputs: set[str] = set()
