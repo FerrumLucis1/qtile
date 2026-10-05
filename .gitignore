@@ -1,2 +1,6 @@
 __pycache__/
 .mypy_cache/
+# your pictures stay on this laptop unless you choose to publish them (git add -f)
+wallpapers/*.jpg
+wallpapers/*.jpeg
+wallpapers/*.png
