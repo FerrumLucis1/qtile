@@ -9,7 +9,7 @@ from typing import Any, cast
 from libqtile import bar, hook, layout, qtile, widget
 from libqtile.backend.wayland import InputConfig
 from libqtile.command.base import expose_command
-from libqtile.config import Click, Drag, Group, Key, Match, Screen
+from libqtile.config import Click, Drag, Group, Key, Match, Output, Screen
 from libqtile.lazy import lazy
 from libqtile.utils import guess_terminal
 from libqtile.widget import base
@@ -21,6 +21,51 @@ HOME_REPO = os.path.expanduser("~/qtile")
 
 mod = "mod4"
 terminal = guess_terminal()
+
+
+# ---------------------------------------------------------------- monitors
+def screen_towards(q: Any, side: str) -> Any:
+    """The nearest screen to the left/right/up/down of the focused one, by real position."""
+    cur = q.current_screen
+    cx, cy = cur.x + cur.width / 2, cur.y + cur.height / 2
+
+    def centre(s: Any) -> tuple[float, float]:
+        return s.x + s.width / 2, s.y + s.height / 2
+
+    tests = {
+        "left": lambda x, y: x < cx, "right": lambda x, y: x > cx,
+        "up": lambda x, y: y < cy, "down": lambda x, y: y > cy,
+    }
+    cands = [s for s in q.screens if s is not cur and tests[side](*centre(s))]
+    return min(cands, key=lambda s: abs(centre(s)[0] - cx) + abs(centre(s)[1] - cy), default=None)
+
+
+@lazy.function
+def focus_side(q: Any, side: str) -> None:
+    target = screen_towards(q, side)
+    if target is not None:
+        q.focus_screen(target.index)
+
+
+@lazy.function
+def move_side(q: Any, side: str) -> None:
+    """Send the focused window to the monitor on that side and follow it."""
+    win, target = q.current_window, screen_towards(q, side)
+    if win is not None and target is not None:
+        win.togroup(target.group.name)
+        q.focus_screen(target.index)
+        target.group.focus(win)
+
+
+@lazy.function
+def move_other(q: Any) -> None:
+    """Send the focused window to the next monitor and follow it."""
+    win = q.current_window
+    if win is not None and len(q.screens) > 1:
+        target = q.screens[(q.current_screen.index + 1) % len(q.screens)]
+        win.togroup(target.group.name)
+        q.focus_screen(target.index)
+        target.group.focus(win)
 
 # ---------------------------------------------------------------- keys
 keys = [
@@ -55,10 +100,15 @@ keys = [
     Key([], "XF86AudioMute", lazy.widget["volicon"].toggle_mute()),
     Key([], "XF86MonBrightnessUp", lazy.spawn("brightnessctl set 5%+")),
     Key([], "XF86MonBrightnessDown", lazy.spawn("brightnessctl set 5%-")),
-    # second screen (TV)
-    Key([mod], "o", lazy.next_screen(), desc="Focus next screen"),
-    Key([mod, "shift"], "o", lazy.window.toscreen(1), desc="Send window to screen 2"),
-    Key([mod, "shift"], "i", lazy.window.toscreen(0), desc="Window to laptop"),
+    # monitors: Super+, / Super+. focus the monitor to the left/right,
+    # add Shift to carry the focused window there; Super+O / Super+Shift+O cycle
+    Key([mod], "comma", focus_side("left"), desc="Focus monitor on the left"),
+    Key([mod], "period", focus_side("right"), desc="Focus monitor on the right"),
+    Key([mod, "shift"], "comma", move_side("left"), desc="Move window to monitor on the left"),
+    Key([mod, "shift"], "period", move_side("right"), desc="Move window to monitor on the right"),
+    Key([mod], "o", lazy.next_screen(), desc="Focus next monitor"),
+    Key([mod, "shift"], "o", move_other(), desc="Move window to next monitor"),
+    Key([mod], "p", lazy.spawn([f"{HOME_REPO}/menu.sh", "displaymenu"]), desc="Display settings"),
     # Ctrl+Alt+F1..F7 switch virtual terminals
     *[Key(["control", "mod1"], f"f{vt}", lazy.core.change_vt(vt), desc=f"Switch to VT{vt}")
       for vt in range(1, 8)],
@@ -83,7 +133,7 @@ layouts = [
     layout.Columns(margin=8, border_width=2, border_focus=accent, border_normal=bg),
     layout.Max(),
 ]
-POPUPS: set[str] = {"powermenu", "wifimenu", "btmenu", "volmenu", "batmenu"}  # GTK menus opened from the bar
+POPUPS: set[str] = {"powermenu", "wifimenu", "btmenu", "volmenu", "batmenu", "displaymenu"}  # GTK menus opened from the bar
 floating_layout = layout.Floating(float_rules=[
     *layout.Floating.default_float_rules,
     *[Match(wm_class=c) for c in ("confirmreset", "makebranch", "maketag", "ssh-askpass", *POPUPS)],
@@ -393,49 +443,52 @@ widget_defaults = dict(font="JetBrainsMono Nerd Font", fontsize=15, padding=6, f
 extension_defaults = widget_defaults.copy()
 SMALL = 13  # stats text size
 
-screens = [
-    Screen(
-        top=bar.Bar(
-            [
-                widget.GroupBox(
-                    highlight_method="block", rounded=False, disable_drag=True,
-                    active=fg, inactive=dim, this_current_screen_border=accent,
-                    padding_x=6, padding_y=3, margin_x=0,
-                ),
-                widget.Spacer(length=180),
-                widget.Spacer(),
-                widget.Clock(format="%a %b %d  %H:%M"),
-                widget.Spacer(),
-                widget.StatusNotifier(icon_size=16, padding=4),  # tray icons
-                widget.DF(visible_on_warn=False, format="disk {r:.0f}%", fontsize=SMALL),
-                sep(),
-                widget.Memory(format="mem {MemPercent:.0f}%", fontsize=SMALL),
-                sep(),
-                widget.CPU(format="cpu {load_percent:.0f}%", fontsize=SMALL),
-                sep(),
-                VolumeIcon(name="volicon", mouse_callbacks={
-                    "Button1": menu("volmenu"),
-                    "Button4": lazy.widget["volicon"].change("5%+"),  # scroll up
-                    "Button5": lazy.widget["volicon"].change("5%-"),  # scroll down
-                }),
-                sep(),
-                BatteryIcon(mouse_callbacks={"Button1": menu("batmenu")}),
-                sep(),
-                widget.GenPollText(func=bt_icon, update_interval=1, fontsize=18, padding=8,
-                                   mouse_callbacks={"Button1": menu("btmenu")}),
-                sep(),
-                WifiArcs(mouse_callbacks={"Button1": menu("wifimenu")}),
-                sep(),
-                widget.TextBox("⏻", fontsize=18,
-                               mouse_callbacks={"Button1": lazy.spawn(f"{HOME_REPO}/powermenu.sh")}),
-            ],
-            24,
-            background=BAR_BG,
-            margin=[6, 6, 0, 6],
-        ),
-    ),
-    Screen(),  # second monitor / TV
-]
+def main_bar() -> bar.Bar:
+    return bar.Bar(
+        [
+            widget.GroupBox(
+                highlight_method="block", rounded=False, disable_drag=True,
+                active=fg, inactive=dim, this_current_screen_border=accent,
+                padding_x=6, padding_y=3, margin_x=0,
+            ),
+            widget.Spacer(length=180),
+            widget.Spacer(),
+            widget.Clock(format="%a %b %d  %H:%M"),
+            widget.Spacer(),
+            widget.StatusNotifier(icon_size=16, padding=4),  # tray icons
+            widget.DF(visible_on_warn=False, format="disk {r:.0f}%", fontsize=SMALL),
+            sep(),
+            widget.Memory(format="mem {MemPercent:.0f}%", fontsize=SMALL),
+            sep(),
+            widget.CPU(format="cpu {load_percent:.0f}%", fontsize=SMALL),
+            sep(),
+            VolumeIcon(name="volicon", mouse_callbacks={
+                "Button1": menu("volmenu"),
+                "Button4": lazy.widget["volicon"].change("5%+"),  # scroll up
+                "Button5": lazy.widget["volicon"].change("5%-"),  # scroll down
+            }),
+            sep(),
+            BatteryIcon(mouse_callbacks={"Button1": menu("batmenu")}),
+            sep(),
+            widget.GenPollText(func=bt_icon, update_interval=1, fontsize=18, padding=8,
+                               mouse_callbacks={"Button1": menu("btmenu")}),
+            sep(),
+            WifiArcs(mouse_callbacks={"Button1": menu("wifimenu")}),
+            sep(),
+            widget.TextBox("⏻", fontsize=18,
+                           mouse_callbacks={"Button1": lazy.spawn(f"{HOME_REPO}/powermenu.sh")}),
+        ],
+        24,
+        background=BAR_BG,
+        margin=[6, 6, 0, 6],
+    )
+
+
+def generate_screens(outputs: list[Output]) -> list[Screen]:
+    """One Screen per connected output; the full bar always goes on the laptop panel
+    (eDP), whatever side the external monitor is placed on."""
+    laptop = next((i for i, o in enumerate(outputs) if (o.port or "").startswith(("eDP", "LVDS"))), 0)
+    return [Screen(top=main_bar()) if i == laptop else Screen() for i in range(len(outputs))]
 
 
 # ---------------------------------------------------------------- hooks
@@ -443,13 +496,28 @@ screens = [
 def place_popup(c: Any) -> None:
     """Put the bar's pop-up menus just under the bar, top-right corner."""
     if POPUPS & set(c.get_wm_class() or []):
-        scr = cast(Any, qtile).current_screen
+        q = cast(Any, qtile)
+        scr = next((s for s in q.screens if s.top), q.current_screen)  # the screen with the bar
         w, h = (c.width or 240), (c.height or 120)
         c.place(scr.x + scr.width - w - 6, scr.y + 36, w, h, 0, accent, above=True)
 
 
+_known_outputs: set[str] = set()
+
+
+@hook.subscribe.screens_reconfigured
+def monitors_changed() -> None:
+    """When a monitor is plugged in, put it on the side saved for it (Super+P)."""
+    ports = {s.output.port for s in cast(Any, qtile).screens if s.output and s.output.port}
+    if ports - _known_outputs:
+        subprocess.Popen([f"{HOME_REPO}/displaymenu.py", "--apply"])
+    _known_outputs.clear()
+    _known_outputs.update(ports)
+
+
 @hook.subscribe.startup_once
 def autostart() -> None:
+    subprocess.Popen([f"{HOME_REPO}/displaymenu.py", "--apply"])
     subprocess.Popen(["lxpolkit"])
     subprocess.Popen(["swaybg", "-c", "#1f1a1a"])
     subprocess.Popen([os.path.expanduser("~/.config/qtile/autostart.sh")])
