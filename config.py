@@ -161,7 +161,7 @@ keys = [
         Key([mod, "shift"], "s", lazy.spawn([f"{HOME_REPO}/screenshot.sh", "area"]), desc="Screenshot of an area"),
     ]),
     *section("System", [
-        Key([mod], "Escape", lazy.spawn("swaylock -f"), desc="Lock screen"),
+        Key([mod], "Escape", lazy.spawn(f"{HOME_REPO}/lock.sh"), desc="Lock screen"),
         Key([mod], "slash", cheat_sheet(), desc="This cheat sheet"),
         Key([mod, "control"], "r", lazy.reload_config(), desc="Reload config"),
         Key([mod, "control"], "q", lazy.shutdown(), desc="Quit Qtile (log out)"),
@@ -213,7 +213,7 @@ wl_input_rules = {
 # idle: dim after 5 min, lock after 10 min; never while a window is fullscreen (videos)
 idle_timers = [
     IdleTimer(300, lazy.spawn("brightnessctl -s set 20%"), lazy.spawn("brightnessctl -r")),
-    IdleTimer(600, lazy.spawn("swaylock -f")),
+    IdleTimer(600, lazy.spawn(f"{HOME_REPO}/lock.sh")),
 ]
 idle_inhibitors = [IdleInhibitor(when="fullscreen")]
 
@@ -603,7 +603,7 @@ def monitors_changed() -> None:
 
 @hook.subscribe.startup_once
 def autostart() -> None:
-    subprocess.Popen(["swayidle", "-w", "before-sleep", "swaylock -f"])  # lock on sleep / lid close
+    subprocess.Popen(["swayidle", "-w", "before-sleep", f"{HOME_REPO}/lock.sh"])  # lock on sleep / lid close
     subprocess.Popen([f"{HOME_REPO}/displaymenu.py", "--apply"])
     subprocess.Popen(["lxpolkit"])
     subprocess.Popen(["swaybg", "-c", "#1f1a1a"])

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Power menu: small GTK window with Shutdown / Sleep / Log out.
 Add an item by adding one line to ITEMS. Closes on Esc, on click-away, or after picking."""
+import os
 import subprocess
 import sys
 from typing import Any
@@ -11,7 +12,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
 ITEMS = [
-    ("Lock", ["swaylock", "-f"]),
+    ("Lock", [os.path.join(os.path.dirname(os.path.realpath(__file__)), "lock.sh")]),
     ("Shutdown", ["systemctl", "poweroff"]),
     ("Sleep", ["systemctl", "suspend"]),
     ("Log out", ["qtile", "cmd-obj", "-o", "cmd", "-f", "shutdown"]),
