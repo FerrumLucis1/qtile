@@ -121,6 +121,13 @@ system_setup() {
         run sudo systemctl set-default graphical.target
     fi
 
+    say "Login screen picture"
+    if ls "$REPO"/wallpapers/login.* >/dev/null 2>&1; then
+        run "$REPO/set-login.sh" --yes
+    else
+        echo "no wallpapers/login.jpg - keeping the plain login screen"
+    fi
+
     say "Default apps"
     run xdg-mime default thunar.desktop inode/directory
     run xdg-mime default org.xfce.ristretto.desktop image/png image/jpeg image/gif image/webp image/bmp image/tiff
