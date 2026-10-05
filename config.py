@@ -484,11 +484,19 @@ def main_bar() -> bar.Bar:
     )
 
 
+_main_screen = Screen(top=main_bar())   # created once and reused, like a static
+_extra_screens: list[Screen] = []       # `screens` list, so plugging/unplugging a
+                                        # monitor never rebuilds the bar
+
+
 def generate_screens(outputs: list[Output]) -> list[Screen]:
     """One Screen per connected output; the full bar always goes on the laptop panel
     (eDP), whatever side the external monitor is placed on."""
     laptop = next((i for i, o in enumerate(outputs) if (o.port or "").startswith(("eDP", "LVDS"))), 0)
-    return [Screen(top=main_bar()) if i == laptop else Screen() for i in range(len(outputs))]
+    while len(_extra_screens) < len(outputs) - 1:
+        _extra_screens.append(Screen())
+    extras = iter(_extra_screens)
+    return [_main_screen if i == laptop else next(extras) for i in range(len(outputs))]
 
 
 # ---------------------------------------------------------------- hooks
@@ -515,9 +523,10 @@ _known_outputs: set[str] = set()
 
 @hook.subscribe.screens_reconfigured
 def monitors_changed() -> None:
-    """When a monitor is plugged in, put it on the side saved for it (Super+P)."""
+    """When a monitor is plugged in, put it on the side saved for it (Super+P);
+    when one is unplugged, move the laptop back to the origin."""
     ports = {s.output.port for s in cast(Any, qtile).screens if s.output and s.output.port}
-    if ports - _known_outputs:
+    if ports != _known_outputs:  # plugged in or unplugged
         subprocess.Popen([f"{HOME_REPO}/displaymenu.py", "--apply"])
     _known_outputs.clear()
     _known_outputs.update(ports)
