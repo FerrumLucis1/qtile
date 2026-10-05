@@ -554,7 +554,13 @@ def main_bar() -> bar.Bar:
     )
 
 
-_main_screen = Screen(top=main_bar())   # created once and reused, like a static
+def wallpaper() -> dict[str, Any]:
+    """Desktop picture: the first wallpapers/background.* in the repo, else a plain colour."""
+    found = sorted(glob.glob(f"{HOME_REPO}/wallpapers/background.*"))
+    return {"wallpaper": found[0], "wallpaper_mode": "fill"} if found else {"background": "#1f1a1a"}
+
+
+_main_screen = Screen(top=main_bar(), **wallpaper())  # created once and reused, like a static
 _extra_screens: list[Screen] = []       # `screens` list, so plugging/unplugging a
                                         # monitor never rebuilds the bar
 
@@ -564,7 +570,7 @@ def generate_screens(outputs: list[Output]) -> list[Screen]:
     (eDP), whatever side the external monitor is placed on."""
     laptop = next((i for i, o in enumerate(outputs) if (o.port or "").startswith(("eDP", "LVDS"))), 0)
     while len(_extra_screens) < len(outputs) - 1:
-        _extra_screens.append(Screen())
+        _extra_screens.append(Screen(**wallpaper()))
     extras = iter(_extra_screens)
     return [_main_screen if i == laptop else next(extras) for i in range(len(outputs))]
 
@@ -607,5 +613,4 @@ def autostart() -> None:
     subprocess.Popen(["swayidle", "-w", "before-sleep", f"{HOME_REPO}/lock.sh"])  # lock on sleep / lid close
     subprocess.Popen([f"{HOME_REPO}/displaymenu.py", "--apply"])
     subprocess.Popen(["lxpolkit"])
-    subprocess.Popen(["swaybg", "-c", "#1f1a1a"])
     subprocess.Popen([os.path.expanduser("~/.config/qtile/autostart.sh")])

@@ -39,7 +39,7 @@ PACKAGES=(
     wireplumber NetworkManager bluez iw util-linux brightnessctl wlr-randr
     tuned tuned-ppd gnome-keyring gnome-keyring-pam
     # desktop apps and helpers
-    alacritty fuzzel mako libnotify swaybg lxpolkit
+    alacritty fuzzel mako libnotify lxpolkit
     grim slurp wl-clipboard swaylock swayidle
     thunar tumbler ristretto
     # config management
