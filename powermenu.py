@@ -14,6 +14,7 @@ from gi.repository import GLib, Gtk  # noqa: E402
 ITEMS = [
     ("Lock", [os.path.join(os.path.dirname(os.path.realpath(__file__)), "lock.sh")]),
     ("Shutdown", ["systemctl", "poweroff"]),
+    ("Reboot", ["systemctl", "reboot"]),
     ("Sleep", ["systemctl", "suspend"]),
     ("Log out", ["qtile", "cmd-obj", "-o", "cmd", "-f", "shutdown"]),
 ]
