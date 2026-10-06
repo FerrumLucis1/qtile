@@ -285,7 +285,7 @@ def wifi_state() -> tuple[bool, bool, int, bool]:
 
 
 class WifiArcs(base._Widget):
-    """Network symbol. Ethernet cable connected: a blue network-port symbol.
+    """Network symbol. Ethernet cable connected: a monitor with a network plug.
     Otherwise Wi-Fi as a dot plus 3 arcs: blue arcs = signal strength,
     white = unlit, grey = Wi-Fi off."""
 
@@ -333,20 +333,34 @@ class WifiArcs(base._Widget):
         self.drawer.draw(offsetx=self.offsetx, offsety=self.offsety, width=self.length)
 
     def draw_ethernet(self, ctx: Any) -> None:
-        """Front view of a network port: a stepped outline with the contact pins inside."""
-        w, h = 18, 15
-        x, y = (self.length - w) / 2, (self.bar.height - h) / 2
-        self.drawer.set_source_rgb(BLUE)
-        ctx.new_path()
-        for px, py in ((0, 4), (4, 4), (4, 0), (14, 0), (14, 4), (18, 4), (18, 15), (0, 15)):
-            ctx.line_to(x + px, y + py)
-        ctx.close_path()
+        """Wired connection: a monitor with a network plug beside it (Windows-style)."""
+        lw = 1.5
+        ctx.save()
+        ctx.translate((self.length - 17) / 2, (self.bar.height - 15) / 2)
+        self.drawer.set_source_rgb(fg)
+        ctx.set_line_width(lw)
+        ctx.new_path()  # monitor: top and right edge (the plug covers the left side)
+        ctx.move_to(6, lw / 2)
+        ctx.line_to(17 - lw / 2, lw / 2)
+        ctx.line_to(17 - lw / 2, 9.5)
+        ctx.stroke()
+        for rx, ry, rw, rh in ((4.5, 9, 12.5, 2.2), (8.2, 11.2, 4, 2), (6.2, 13.2, 8, 1.6)):
+            ctx.rectangle(rx, ry, rw, rh)  # bezel, stand, base
         ctx.fill()
-        self.drawer.set_source_rgb(self.bar.background)
-        for i in range(4):  # contact pins
-            ctx.rectangle(x + 4.5 + i * 2.5, y + 2.5, 1.2, 4)
+        ctx.rectangle(lw / 2, lw / 2, 4.2, 5.6)  # plug head
+        ctx.stroke()
+        ctx.rectangle(1.9, 2.1, 1.3, 2.6)  # slot in the plug
         ctx.fill()
-
+        ctx.new_path()  # cable running down and curving into the stand
+        ctx.move_to(2.55, 6.3)
+        ctx.line_to(2.55, 12.2)
+        ctx.curve_to(2.55, 14.0, 4.0, 14.0, 6.2, 14.0)
+        ctx.stroke()
+        ctx.new_path()  # plug grip
+        ctx.move_to(0.75, 7.4)
+        ctx.line_to(0.75, 11.5)
+        ctx.stroke()
+        ctx.restore()
 
 def text_layout(w: Any, text: str = "") -> Any:
     return w.drawer.textlayout(text, fg, w.font, w.fontsize, None, wrap=False)
