@@ -262,18 +262,31 @@ def wifi_level(iface: str) -> int:
     return 0
 
 
-def wifi_state() -> tuple[bool, bool, int]:
-    """(radio_on, connected, level 0-3)"""
+def wired_up() -> bool:
+    """True when a real (physical, non-Wi-Fi) network port has a cable with a live link.
+    Virtual interfaces like lo, tailscale0 or docker have no 'device' entry, so they're skipped."""
+    for d in glob.glob("/sys/class/net/*"):
+        if os.path.exists(f"{d}/device") and not os.path.exists(f"{d}/wireless"):
+            if read(f"{d}/carrier") == "1" and read(f"{d}/operstate") == "up":
+                return True
+    return False
+
+
+def wifi_state() -> tuple[bool, bool, int, bool]:
+    """(radio_on, connected, level 0-3, ethernet_plugged_in)"""
+    if wired_up():
+        return True, True, 3, True
     on = radio_on("wlan")
     for d in glob.glob("/sys/class/net/*/wireless"):
         iface = d.split("/")[4]
         if read(f"/sys/class/net/{iface}/operstate") == "up":
-            return on, True, wifi_level(iface)
-    return on, False, 0
+            return on, True, wifi_level(iface), False
+    return on, False, 0, False
 
 
 class WifiArcs(base._Widget):
-    """Wi-Fi symbol drawn as a dot plus 3 arcs: blue arcs = signal strength,
+    """Network symbol. Ethernet cable connected: a blue network-port symbol.
+    Otherwise Wi-Fi as a dot plus 3 arcs: blue arcs = signal strength,
     white = unlit, grey = Wi-Fi off."""
 
     defaults = [("update_interval", 3, "Seconds between checks")]
@@ -281,7 +294,7 @@ class WifiArcs(base._Widget):
     def __init__(self, **config: Any) -> None:
         base._Widget.__init__(self, bar.CALCULATED, **config)
         self.add_defaults(WifiArcs.defaults)
-        self.state: tuple[bool, bool, int] | None = None
+        self.state: tuple[bool, bool, int, bool] | None = None
 
     def calculate_length(self) -> int:
         return 36  # a little wider than the icon so it is easy to click
@@ -299,9 +312,13 @@ class WifiArcs(base._Widget):
     def draw(self) -> None:
         if not self.state:
             return
-        on, connected, level = self.state
+        on, connected, level, wired = self.state
         self.drawer.clear(self.background or self.bar.background)
         ctx = self.drawer.ctx
+        if wired:
+            self.draw_ethernet(ctx)
+            self.drawer.draw(offsetx=self.offsetx, offsety=self.offsety, width=self.length)
+            return
         cx, cy = self.length / 2, self.bar.height / 2 + 6
         ctx.set_line_width(2)
         for i, r in enumerate((5, 9, 13), start=1):
@@ -314,6 +331,21 @@ class WifiArcs(base._Widget):
         ctx.arc(cx, cy, 1.8, 0, 2 * math.pi)
         ctx.fill()
         self.drawer.draw(offsetx=self.offsetx, offsety=self.offsety, width=self.length)
+
+    def draw_ethernet(self, ctx: Any) -> None:
+        """Front view of a network port: a stepped outline with the contact pins inside."""
+        w, h = 18, 15
+        x, y = (self.length - w) / 2, (self.bar.height - h) / 2
+        self.drawer.set_source_rgb(BLUE)
+        ctx.new_path()
+        for px, py in ((0, 4), (4, 4), (4, 0), (14, 0), (14, 4), (18, 4), (18, 15), (0, 15)):
+            ctx.line_to(x + px, y + py)
+        ctx.close_path()
+        ctx.fill()
+        self.drawer.set_source_rgb(self.bar.background)
+        for i in range(4):  # contact pins
+            ctx.rectangle(x + 4.5 + i * 2.5, y + 2.5, 1.2, 4)
+        ctx.fill()
 
 
 def text_layout(w: Any, text: str = "") -> Any:
