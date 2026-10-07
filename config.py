@@ -1,9 +1,12 @@
-# Qtile config (Wayland) - Gabriel's laptop
+# Qtile config (Wayland) - shared by Gabriel's laptop (Fedora) and desktop (CachyOS).
+# Laptop-only parts (battery icon, brightness keys, idle dimming) switch themselves
+# off on a machine without a battery / backlight - see HAS_BATTERY and HAS_BACKLIGHT.
 # Backup of the pre-cleanup version: branch "backup-pre-cleanup" on GitHub.
 import glob
 import json
 import math
 import os
+import shutil
 import subprocess
 from typing import Any, cast
 
@@ -20,6 +23,12 @@ bg, fg, dim, accent = "#1a1f1c", "#d5ddd7", "#6f7d74", "#7fa38a"
 BAR_BG, BLUE, LOW = "#1e3527", "#4aa3ff", "#c47a74"
 # the repo this config lives in (config.py is symlinked from there), wherever it was cloned
 HOME_REPO = os.path.dirname(os.path.realpath(__file__))
+
+# ---------------------------------------------------------------- which machine
+# laptop: has a battery and a screen backlight; desktop: has neither
+BATTERIES = sorted(glob.glob("/sys/class/power_supply/BAT*"))
+HAS_BATTERY = bool(BATTERIES)
+HAS_BACKLIGHT = bool(glob.glob("/sys/class/backlight/*"))
 
 mod = "mod4"
 terminal = guess_terminal()
@@ -169,8 +178,10 @@ keys = [
         Key([], "XF86AudioRaiseVolume", lazy.widget["volicon"].change("5%+"), desc="Volume up"),
         Key([], "XF86AudioLowerVolume", lazy.widget["volicon"].change("5%-"), desc="Volume down"),
         Key([], "XF86AudioMute", lazy.widget["volicon"].toggle_mute(), desc="Mute"),
-        Key([], "XF86MonBrightnessUp", lazy.spawn("brightnessctl set 5%+"), desc="Brightness up"),
-        Key([], "XF86MonBrightnessDown", lazy.spawn("brightnessctl set 5%-"), desc="Brightness down"),
+        *([
+            Key([], "XF86MonBrightnessUp", lazy.spawn("brightnessctl set 5%+"), desc="Brightness up"),
+            Key([], "XF86MonBrightnessDown", lazy.spawn("brightnessctl set 5%-"), desc="Brightness down"),
+        ] if HAS_BACKLIGHT else []),
         # Ctrl+Alt+F1..F7 switch virtual terminals
         *hidden([Key(["control", "mod1"], f"f{vt}", lazy.core.change_vt(vt), desc=f"Switch to VT{vt}")
                  for vt in range(1, 8)]),
@@ -211,9 +222,10 @@ wl_input_rules = {
 
 # focus, floating, cursor and other general settings are left at Qtile defaults
 
-# idle: dim after 5 min, lock after 10 min; never while a window is fullscreen (videos)
+# idle: dim after 5 min (laptop only), lock after 10 min; never while a window is fullscreen (videos, games)
 idle_timers = [
-    IdleTimer(300, lazy.spawn("brightnessctl -s set 20%"), lazy.spawn("brightnessctl -r")),
+    *([IdleTimer(300, lazy.spawn("brightnessctl -s set 20%"), lazy.spawn("brightnessctl -r"))]
+      if HAS_BACKLIGHT else []),
     IdleTimer(600, lazy.spawn(f"{HOME_REPO}/lock.sh")),
 ]
 idle_inhibitors = [IdleInhibitor(when="fullscreen")]
@@ -480,7 +492,9 @@ class VolumeIcon(base._Widget):
 
 def battery_info() -> tuple[int, str]:
     """(percent, status) from sysfs."""
-    b = "/sys/class/power_supply/BAT0/"
+    if not BATTERIES:
+        return 0, "Unknown"
+    b = BATTERIES[0] + "/"
     try:
         return int(read(b + "capacity")), read(b + "status")
     except ValueError:
@@ -587,8 +601,7 @@ def main_bar() -> bar.Bar:
                 "Button5": lazy.widget["volicon"].change("5%-"),  # scroll down
             }),
             sep(),
-            BatteryIcon(mouse_callbacks={"Button1": menu("batmenu")}),
-            sep(),
+            *([BatteryIcon(mouse_callbacks={"Button1": menu("batmenu")}), sep()] if HAS_BATTERY else []),
             widget.GenPollText(func=bt_icon, update_interval=1, fontsize=18, padding=8,
                                mouse_callbacks={"Button1": menu("btmenu")}),
             sep(),
@@ -661,5 +674,11 @@ def monitors_changed() -> None:
 def autostart() -> None:
     subprocess.Popen(["swayidle", "-w", "before-sleep", f"{HOME_REPO}/lock.sh"])  # lock on sleep / lid close
     subprocess.Popen([f"{HOME_REPO}/displaymenu.py", "--apply"])
-    subprocess.Popen(["lxpolkit"])
+    # password pop-ups for admin actions: whichever agent this machine has
+    # (lxpolkit on the Fedora laptop, KDE's or GNOME's agent on the CachyOS desktop)
+    for agent in ("lxpolkit", "/usr/lib/polkit-kde-authentication-agent-1",
+                  "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"):
+        if shutil.which(agent):  # finds commands on PATH and full paths alike
+            subprocess.Popen([agent])
+            break
     subprocess.Popen([os.path.expanduser("~/.config/qtile/autostart.sh")])

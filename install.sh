@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Set up this Qtile (Wayland) desktop on a fresh Fedora install.
+# Set up this Qtile (Wayland) desktop. Works on both machines:
+#   - Fedora laptop        (dnf, battery, Qtile is the only desktop)
+#   - CachyOS/Arch desktop (pacman, no battery, KDE Plasma installed alongside)
 #
 #   git clone https://github.com/FerrumLucis1/qtile ~/qtile
 #   ~/qtile/install.sh              # do everything
@@ -17,7 +19,7 @@ for arg in "$@"; do
     case "$arg" in
         --dry-run) DRY=1 ;;
         --links-only) LINKS_ONLY=1 ;;
-        -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
         *) echo "Unknown option: $arg" >&2; exit 1 ;;
     esac
 done
@@ -28,16 +30,40 @@ if [ "$(id -u)" -eq 0 ]; then
 fi
 
 say() { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
+skip() { printf '\033[0;33mskipped:\033[0m %s\n' "$*"; }
 run() { echo "+ $*"; if [ "$DRY" -eq 0 ]; then "$@"; fi; }
 
-PACKAGES=(
+# ---------------------------------------------------------------- what machine is this?
+. /etc/os-release
+case " ${ID:-} ${ID_LIKE:-} " in
+    *" fedora "*) DISTRO=fedora ;;
+    *" arch "*)   DISTRO=arch ;;
+    *) echo "Unsupported system ($PRETTY_NAME) - only Fedora and Arch-based (CachyOS) are handled." >&2
+       echo "You can still link the config files with: $0 --links-only" >&2
+       [ "$LINKS_ONLY" -eq 1 ] || exit 1
+       DISTRO=other ;;
+esac
+
+if ls -d /sys/class/power_supply/BAT* >/dev/null 2>&1; then MACHINE=laptop; else MACHINE=desktop; fi
+
+# KDE Plasma installed too? Then leave the things both desktops share alone
+# (login screen theme, GTK settings file, default apps).
+PLASMA=0
+if ls /usr/share/wayland-sessions/plasma*.desktop /usr/share/xsessions/plasma*.desktop >/dev/null 2>&1; then
+    PLASMA=1
+fi
+
+say "Detected: $PRETTY_NAME, $MACHINE$([ "$PLASMA" -eq 1 ] && echo ", KDE Plasma also installed")"
+
+# ---------------------------------------------------------------- packages
+FEDORA_PACKAGES=(
     # window manager + login
     qtile qtile-wayland sddm
     # bar widgets and pop-up menus
     python3-gobject gtk3 python3-psutil python3-dbus-fast python3-mypy
     # system pieces the bar talks to
-    wireplumber NetworkManager bluez iw util-linux brightnessctl wlr-randr
-    tuned tuned-ppd gnome-keyring gnome-keyring-pam
+    wireplumber NetworkManager bluez iw util-linux wlr-randr
+    gnome-keyring gnome-keyring-pam
     # desktop apps and helpers
     alacritty fuzzel mako libnotify lxpolkit
     grim slurp wl-clipboard swaylock swayidle
@@ -45,10 +71,32 @@ PACKAGES=(
     # config management
     git gh
 )
+FEDORA_LAPTOP=(brightnessctl tuned tuned-ppd)
 
-install_packages() {
-    say "Installing packages"
-    run sudo dnf install -y --skip-unavailable "${PACKAGES[@]}"
+ARCH_PACKAGES=(
+    # window manager + login (xwayland lets X11-only apps like Steam run inside Qtile)
+    qtile xorg-xwayland sddm
+    # bar widgets and pop-up menus
+    python-gobject gtk3 python-psutil python-dbus-fast mypy
+    # system pieces the bar talks to
+    wireplumber networkmanager bluez bluez-utils iw util-linux wlr-randr gnome-keyring
+    # desktop apps and helpers
+    alacritty fuzzel mako libnotify
+    grim slurp wl-clipboard swaylock swayidle
+    thunar tumbler ristretto
+    ttf-jetbrains-mono-nerd
+    # config management
+    git github-cli
+)
+ARCH_LAPTOP=(brightnessctl)
+# password pop-ups: KDE already ships an agent; otherwise use GNOME's
+ARCH_NO_PLASMA=(polkit-gnome)
+
+install_fedora() {
+    local pkgs=("${FEDORA_PACKAGES[@]}")
+    [ "$MACHINE" = laptop ] && pkgs+=("${FEDORA_LAPTOP[@]}")
+    say "Installing packages (dnf)"
+    run sudo dnf install -y --skip-unavailable "${pkgs[@]}"
 
     say "Brave browser"
     if rpm -q brave-browser >/dev/null 2>&1; then
@@ -76,6 +124,25 @@ install_packages() {
     fi
 }
 
+install_arch() {
+    local wanted=("${ARCH_PACKAGES[@]}") pkgs=() p
+    [ "$MACHINE" = laptop ] && wanted+=("${ARCH_LAPTOP[@]}")
+    [ "$PLASMA" -eq 0 ] && wanted+=("${ARCH_NO_PLASMA[@]}")
+    say "Installing packages (pacman)"
+    # pacman refuses the whole list if one name is unknown, so check each first
+    for p in "${wanted[@]}"; do
+        if pacman -Si "$p" >/dev/null 2>&1 || pacman -Qi "$p" >/dev/null 2>&1; then
+            pkgs+=("$p")
+        else
+            skip "$p (not in the repos)"
+        fi
+    done
+    run sudo pacman -S --needed --noconfirm "${pkgs[@]}"
+    if ! command -v brave >/dev/null; then
+        skip "Brave browser - on CachyOS install it with: paru -S brave-bin"
+    fi
+}
+
 link() {  # link <file in repo> <target path>
     local src="$REPO/$1" dst="$2"
     if [ "$(readlink -f "$dst" 2>/dev/null)" = "$src" ]; then
@@ -97,7 +164,11 @@ link_configs() {
     link fuzzel/fuzzel.ini      "$HOME/.config/fuzzel/fuzzel.ini"
     link mako/config            "$HOME/.config/mako/config"
     link swaylock/config        "$HOME/.config/swaylock/config"
-    link gtk-3.0/settings.ini   "$HOME/.config/gtk-3.0/settings.ini"
+    if [ "$PLASMA" -eq 1 ]; then
+        skip "~/.config/gtk-3.0/settings.ini - KDE manages that file (System Settings > Appearance)"
+    else
+        link gtk-3.0/settings.ini "$HOME/.config/gtk-3.0/settings.ini"
+    fi
 }
 
 system_setup() {
@@ -122,23 +193,38 @@ system_setup() {
     fi
 
     say "Login screen picture"
-    if ls "$REPO"/wallpapers/login.* >/dev/null 2>&1; then
+    if [ "$PLASMA" -eq 1 ]; then
+        skip "the login screen is shared with KDE - keeping its theme"
+    elif [ "$DISTRO" != fedora ]; then
+        skip "set-login.sh is Fedora-only"
+    elif ls "$REPO"/wallpapers/login.* >/dev/null 2>&1; then
         run "$REPO/set-login.sh" --yes
     else
         echo "no wallpapers/login.jpg - keeping the plain login screen"
     fi
 
     say "Default apps"
-    run xdg-mime default thunar.desktop inode/directory
-    run xdg-mime default org.xfce.ristretto.desktop image/png image/jpeg image/gif image/webp image/bmp image/tiff
+    if [ "$PLASMA" -eq 1 ]; then
+        skip "KDE's defaults (Dolphin, Gwenview) are shared with Qtile - left as they are"
+    else
+        run xdg-mime default thunar.desktop inode/directory
+        run xdg-mime default org.xfce.ristretto.desktop image/png image/jpeg image/gif image/webp image/bmp image/tiff
+    fi
 
     say "Power"
-    run sudo systemctl enable --now tuned
-    run sudo tuned-adm profile powersave
+    if [ "$DISTRO" = fedora ] && [ "$MACHINE" = laptop ]; then
+        run sudo systemctl enable --now tuned
+        run sudo tuned-adm profile powersave
+    else
+        skip "power-saving profile is for the Fedora laptop only"
+    fi
 }
 
 if [ "$LINKS_ONLY" -eq 0 ]; then
-    install_packages
+    case "$DISTRO" in
+        fedora) install_fedora ;;
+        arch)   install_arch ;;
+    esac
 fi
 link_configs
 if [ "$LINKS_ONLY" -eq 0 ]; then
@@ -153,7 +239,8 @@ fi
 say "Done"
 cat <<EOF
 Next steps:
-  - Log out (or reboot) and pick "Qtile (Wayland)" at the login screen.
+  - Log out (or reboot). On the login screen, click the session menu in the
+    bottom-left corner and pick "Qtile (Wayland)".$([ "$PLASMA" -eq 1 ] && printf '\n    To go back to KDE, log out and pick "Plasma (Wayland)" there.')
   - Press Super+/ for the list of keyboard shortcuts.
   - Run: gh auth login   (so you can push config changes)
 EOF

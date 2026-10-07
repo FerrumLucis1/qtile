@@ -9,6 +9,10 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+if ! command -v dnf >/dev/null; then
+    echo "set-login.sh only works on Fedora (it installs the theme with dnf). Nothing changed." >&2
+    exit 1
+fi
 YES=0
 [ "${1:-}" = "--yes" ] && YES=1
 
