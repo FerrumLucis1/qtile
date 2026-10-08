@@ -137,7 +137,9 @@ install_arch() {
             skip "$p (not in the repos)"
         fi
     done
-    run sudo pacman -S --needed --noconfirm "${pkgs[@]}"
+    # -Syu, not -S: Arch doesn't support partial upgrades - installing new packages
+    # without updating everything else can leave KDE needing a newer Qt than is installed
+    run sudo pacman -Syu --needed --noconfirm "${pkgs[@]}"
     if ! command -v brave >/dev/null; then
         skip "Brave browser - on CachyOS install it with: paru -S brave-bin"
     fi
