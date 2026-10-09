@@ -35,3 +35,16 @@ Needs Qtile 0.30+ and an X server. Copy `mini/config.py` to `~/.config/qtile/con
 Qtile is a Python program, so about 43 MB is the floor for the interpreter plus libqtile.
 The config trims little RAM; what it saves is CPU wakeups and background programs.
 For single-digit MB, use a C window manager (dwm, i3). The X server adds its own memory on top.
+
+## Browser demo (Docker)
+`Dockerfile` + `start.sh` run the desktop in a container and stream it to a web page (Xvfb + x11vnc + noVNC).
+```
+docker build -f mini/Dockerfile -t qtile-mini .
+docker run --rm -p 8080:8080 qtile-mini
+# open http://localhost:8080/vnc.html?autoconnect=true&resize=scale
+```
+- Alt is the main key in the browser (Alt+x terminal, Alt+1-9 workspaces, Alt+Tab layouts).
+- Env: `PORT` (default 8080), `SESSION_SECONDS` (auto-exit, default 900), `VNC_PASSWORD` (optional), `SCREEN`.
+- One viewer at a time. VNC listens on localhost only; noVNC is the only public port.
+- **Visitors get a terminal inside the container.** Run it as the unprivileged user (the Dockerfile does), with no secrets mounted, and let the host restart it after each session.
+- Tested: all five processes together use ~175 MB RAM idle (summed RSS, so slightly overcounted). The Dockerfile itself has not been build-tested (no Docker daemon where it was written), but the same stack was run and driven in a browser.
