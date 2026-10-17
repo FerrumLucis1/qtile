@@ -68,6 +68,26 @@ def move_side(q: Any, side: str) -> None:
         target.group.focus(win)
 
 
+def screen_at(q: Any, x: int, y: int) -> Any:
+    return next((s for s in q.screens if s.x <= x < s.x + s.width and s.y <= y < s.y + s.height), None)
+
+
+@lazy.function
+def toggle_float(q: Any) -> None:
+    """Toggle floating; when going back to tiled, tile on the monitor the window is on now
+    (a window dragged by its title bar keeps its old workspace otherwise)."""
+    win = q.current_window
+    if win is None:
+        return
+    if win.floating:
+        target = screen_at(q, win.x + win.width // 2, win.y + win.height // 2)
+        if target is not None and win.group is not target.group:
+            win.togroup(target.group.name)
+            q.focus_screen(target.index)
+            target.group.focus(win)
+    win.toggle_floating()
+
+
 @lazy.function
 def move_other(q: Any) -> None:
     """Send the focused window to the next monitor and follow it."""
@@ -144,7 +164,7 @@ keys = [
         Key([mod], "Tab", lazy.next_layout(), desc="Next layout"),
         Key([mod], "q", lazy.window.kill(), desc="Close window"),
         Key([mod], "f", lazy.window.toggle_fullscreen(), desc="Toggle fullscreen"),
-        Key([mod], "t", lazy.window.toggle_floating(), desc="Toggle floating"),
+        Key([mod], "t", toggle_float(), desc="Toggle floating (tiles on the monitor it is on)"),
         *hidden([Key([mod, "control"], k, lazy.window.move_floating(x, y), desc=f"Move floating window {k}")
                  for k, x, y in ARROWS]),
         *hidden([Key([mod, "shift"], k, lazy.window.resize_floating(x, y), desc=f"Resize floating window {k}")
@@ -657,17 +677,35 @@ def place_popup(c: Any) -> None:
 
 
 _known_outputs: set[str] = set()
+_shown_groups: set[str] = set()
+
+
+def rescue_windows(q: Any) -> None:
+    """After a monitor is unplugged, bring its windows to the laptop: windows on a
+    workspace that is no longer shown, and floating windows left off-screen."""
+    main = next((s for s in q.screens if s.top), q.current_screen)
+    shown = {s.group.name for s in q.screens}
+    for name in _shown_groups - shown:
+        for win in list(q.groups_map[name].windows):
+            win.togroup(main.group.name)
+    for win in list(main.group.windows):
+        if win.floating and screen_at(q, win.x + win.width // 2, win.y + win.height // 2) is None:
+            win.set_position_floating(main.x + (main.width - win.width) // 2,
+                                      main.y + (main.height - win.height) // 2)
+    _shown_groups.clear()
+    _shown_groups.update(shown)
 
 
 @hook.subscribe.screens_reconfigured
 def monitors_changed() -> None:
     """When a monitor is plugged in, put it on the side saved for it (Super+P);
-    when one is unplugged, move the laptop back to the origin."""
+    when one is unplugged, move the laptop back to the origin and bring its windows over."""
     ports = {s.output.port for s in cast(Any, qtile).screens if s.output and s.output.port}
     if ports != _known_outputs:  # plugged in or unplugged
         subprocess.Popen([f"{HOME_REPO}/displaymenu.py", "--apply"])
     _known_outputs.clear()
     _known_outputs.update(ports)
+    rescue_windows(cast(Any, qtile))
 
 
 @hook.subscribe.startup_once
